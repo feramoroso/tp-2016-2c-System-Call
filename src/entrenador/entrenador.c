@@ -42,6 +42,7 @@ void get_config(struct confCoach *configCoach, char *path){
 
 	configCoach->hojadeviaje = config_get_array_value(coachConfig, "hojaDeViaje");
 	int i = 0;
+	int j = 0;
 	while(configCoach->hojadeviaje[i] != NULL){
 		if (configCoach->hojadeviaje[i+1] == NULL){
 			configCoach->hojadeviaje[i][strlen(configCoach->hojadeviaje[i])-1]='\0';
@@ -50,7 +51,7 @@ void get_config(struct confCoach *configCoach, char *path){
 		i++;
 	}
 	configCoach->objetivos = list_create();
-	for (int j = 0 ; j<i; j++){
+	for (j = 0 ; j<i; j++){
 		char *mapa = calloc(1,sizeof(char*));
 		strcpy(mapa, "obj[");
 		strcpy(mapa+4,configCoach->hojadeviaje[j]);
