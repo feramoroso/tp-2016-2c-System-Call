@@ -16,7 +16,6 @@ typedef struct {
 	int inicioTabAsig;
 	int tamDatos;
 	char relleno[40];
-
 } tHeader;
 
 typedef struct {
@@ -28,7 +27,7 @@ typedef struct {
 	int bloqueIncial;
 } osadaFile;
 
-int main() {
+int estructurasOSADA() {
 	osadaFile archivo;
 	printf("Introduzca el nombre del Archivo: ");
 	scanf("%s",archivo.nomArch);
