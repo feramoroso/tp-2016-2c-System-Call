@@ -33,6 +33,8 @@ int main ( int argc , char * argv []) {
 }
 
 void get_config(struct confCoach *configCoach, char *path){
+	int i = 0;
+	int j = 0;
 	t_config *coachConfig = config_create(path);
 	configCoach->nombre = config_get_string_value(coachConfig, "nombre");
 	configCoach->simbolo = config_get_string_value(coachConfig, "simbolo")[0];
@@ -41,8 +43,7 @@ void get_config(struct confCoach *configCoach, char *path){
 	printf("\nNombre: %s [%c]",configCoach->nombre, configCoach->simbolo);
 
 	configCoach->hojadeviaje = config_get_array_value(coachConfig, "hojaDeViaje");
-	int i = 0;
-	int j = 0;
+
 	while(configCoach->hojadeviaje[i] != NULL){
 		if (configCoach->hojadeviaje[i+1] == NULL){
 			configCoach->hojadeviaje[i][strlen(configCoach->hojadeviaje[i])-1]='\0';
