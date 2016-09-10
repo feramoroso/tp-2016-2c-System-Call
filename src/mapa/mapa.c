@@ -1,3 +1,0 @@
-/*
- * Proceso principal del Mapa
- */
