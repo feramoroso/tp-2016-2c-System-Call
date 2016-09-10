@@ -189,7 +189,7 @@ void error(int code, char *err)
 {
   char *msg=(char*)malloc(strlen(err)+14);
   sprintf(msg, "Error %d: %s\n", code, err);
-  fprintf(stderr, msg);
+  fprintf(stderr,"%s", msg);
   free(msg);
   exit(1);
 }

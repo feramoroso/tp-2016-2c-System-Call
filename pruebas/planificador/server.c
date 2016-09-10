@@ -17,7 +17,8 @@
 #include <unistd.h>
 
 #define MAXCLIENTES 10
-#define MAXCHAR 10
+#define MAXCHAR 50
+#define MAXNOM 50
 #define MIN 50
 #define PORT 38432
 
@@ -26,48 +27,52 @@ void checkError(int, char*);
 int main(void) {
 	struct sockaddr_in direccionServer;
 	struct sockaddr_in direccionCliente;
-	char buffer[MAXCHAR];
-	int yes = 1;
 	int socketServer, socketCliente;
+	int socketsDeClientes[MAXCLIENTES]; // Array que alberga los descriptores de los clientes que se nos conecten
+
+	char buffer[MAXCHAR]; // Cadena para almacenar mensajes
+	char hostname[MAXNOM]; // Cadena para almacenar el nombre del Server
+	int yes = 1;
+
 	int binder, reutilizer, listening, receive, sender; /*variables que toman los valores que devuelven las respectivas
 														funciones para chequear errores*/
-	unsigned int addrlen;
+	int addrlen; // Cantidad de bytes de la Dirección
 	int bytesRecibidos = 0, bufferSize = MIN;
 
-	int i = 0;
-	int socketsDeClientes[MAXCLIENTES]; /*Array que alberga los descriptores de los clientes que se nos conecten*/
 	fd_set read_descriptors; /*Es una estructura que va a guardar los descriptores que esten para leer*/
 	int maxDescriptores = 0; /*Indica la cantidad maxima de descriptores hasta el momento*/
 	int posUltimoCliente = 0;
+	int i = 0; // Para control ciclo for
 
 	socketServer = socket(AF_INET, SOCK_STREAM, 0);
-
 	checkError(socketServer, "SOCKET\n");
 
 	reutilizer = setsockopt(socketServer, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-
 	checkError(reutilizer, "REUTILIZAR PUERTO\n");
 
 	direccionServer.sin_family = AF_INET;
 	direccionServer.sin_port = htons(PORT);
-	direccionServer.sin_addr.s_addr = htonl(INADDR_ANY); //mi propia direccion IP
-	memset(&(direccionServer.sin_zero), '\0', 8);
+	direccionServer.sin_addr.s_addr = htonl(INADDR_ANY); // Mi propia dirección IP
+	memset(&(direccionServer.sin_zero), '\0', 8); // Pongo en 0 el resto de la estructura
+
+	gethostname(hostname, MAXNOM);
+	printf("Host Name : %s\n",hostname);
+	printf("Dirección : %s\n",inet_ntoa(direccionServer.sin_addr));
+	printf("Puerto    : %d\n",PORT);
 
 	binder = bind(socketServer, (struct sockaddr *)&direccionServer, sizeof(direccionServer));
-
 	checkError(binder, "BIND\n");
 
-	maxDescriptores = socketServer; /*el socketServer va a ser el descriptor de valor maximo por el momento*/
+	maxDescriptores = socketServer; // el socketServer va a ser el descriptor de valor maximo por el momento
 
-	bzero(socketsDeClientes, MAXCLIENTES);
+	bzero(socketsDeClientes, MAXCLIENTES); // Pongo en 0 el Arreglo de Clientes
 
 	/*pongo el socket a escuchar nuevas conexiones*/
 	listening = listen(socketServer, MAXCLIENTES);
-
 	checkError(listening, "LISTENING\n");
+	puts("Escuchando...");
 
 	/*meto el descriptor del socket del server en read_descriptores*/
-
 	FD_ZERO(&read_descriptors); /*vacio read_descriptors primero*/
 	FD_SET(socketServer, &read_descriptors); /*Meto el socket del servidor en la estructura*/
 
@@ -79,13 +84,15 @@ int main(void) {
 		if (FD_ISSET(socketServer, &read_descriptors)){
 			puts("AVISO: Nueva conexion.");
 
-			addrlen = sizeof(direccionCliente);
+			addrlen = sizeof(struct sockaddr_in);
 			socketCliente = accept(socketServer, (struct sockaddr *)&direccionCliente, &addrlen);
 			checkError(socketCliente, "ACCEPT\n");
+			puts("AVISO: Conexión Aceptada.");
 
 			//agrego el descriptor al array de clientes y luego lo setteo en read_descriptors
 			socketsDeClientes[posUltimoCliente] = socketCliente;
 			FD_SET(socketCliente, &read_descriptors);
+			puts("AVISO: Conexión Agregada al Arreglo de conexiones.");
 
 			//asigno el valor del descriptor del cliente nuevo al de maxDescriptores si es mayor a este
 			if (socketCliente>maxDescriptores) maxDescriptores = socketCliente;
@@ -136,7 +143,7 @@ int main(void) {
 
 	}
 
-	/*cierres*/
+	// Cierres
 	for (i = 0; i <= posUltimoCliente; i++){
 		close(socketsDeClientes[i]);
 	}
