@@ -43,7 +43,7 @@ void get_config(struct confCoach *configCoach, char *path){
 	printf("\nNombre: %s [%c]",configCoach->nombre, configCoach->simbolo);
 
 	configCoach->hojadeviaje = config_get_array_value(coachConfig, "hojaDeViaje");
-
+//nada
 	while(configCoach->hojadeviaje[i] != NULL){
 		if (configCoach->hojadeviaje[i+1] == NULL){
 			configCoach->hojadeviaje[i][strlen(configCoach->hojadeviaje[i])-1]='\0';
