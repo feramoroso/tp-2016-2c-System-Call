@@ -15,3 +15,5 @@ struct confCoach{
 }confCoach;
 
 void get_config(struct confCoach *configCoach, char *path);
+
+//prueba sil
