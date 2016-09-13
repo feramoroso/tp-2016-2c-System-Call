@@ -12,7 +12,5 @@ int main(int argc , char *argv[]) {
 		printf("Uso ./mapa <nombre_mapa> <ruta>\n");
 		return (1);
 	}
-
-
-
+	return(0);
 }
