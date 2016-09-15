@@ -2,8 +2,8 @@
 #include<stdlib.h>
 #include<stdint.h>
 #include<string.h>
-#include<sys/mman.h>
 #include "pokedex.h"
+
 
 int main(){
 	printf("PokeDex Servidor\n");
@@ -17,7 +17,7 @@ int main(){
 	}
 	boot->buffer[0] ='\0';
 	
-	fgets(boot->buffer, 64,pokedex);
+	fread(boot->buffer, OSADA_BLOCK_SIZE, 1, pokedex);
 	printf("\nFileSystem Etiqueta: %s",boot->magic_number);
 	printf("\nFileSystem Version: %d",boot->version );
 	printf("\nFileSystem BLOCKS: %d",boot->fs_blocks);
@@ -25,46 +25,67 @@ int main(){
 	printf("\nFileSystem Offset Alloc: %d",boot->allocations_table_offset);
 	printf("\nFileSystem Data Blocks: %d",boot->data_blocks);
 	
-	printf("\n\nBitmap:\n");
+
+	printf("\n\nOffset Bitmap:           0x%08X",(uint32_t) (1*OSADA_BLOCK_SIZE));
+	printf(  "\nOffset Tabla Archivos:   0x%08X",(uint32_t) ((boot->bitmap_blocks+1)*OSADA_BLOCK_SIZE));
+	printf(  "\nOffset Tabla Asignacion: 0x%08X", (uint32_t) ((boot->allocations_table_offset)*OSADA_BLOCK_SIZE));
+	printf(  "\nOffset Datos:            0x%08X",(uint32_t) ((boot->allocations_table_offset + boot->fs_blocks - 1 - 1024 - boot->bitmap_blocks - boot->data_blocks )*OSADA_BLOCK_SIZE));
+
+
+	printf("\nBitmap(primeros 7 bloques):\n");
 	uint8_t byte[64];
 	uint8_t mask;
+	uint8_t *bitmap = calloc( boot->fs_blocks , sizeof(uint8_t));
 	int i,j,k;
-	fseek(pokedex,64, SEEK_SET );
-	for(j=0;j<(boot->bitmap_blocks);j++){
-		printf("Bloque: %d\n",j+1);
-		fgets(byte, 64,pokedex);
-		for(k=0;k<64;k++){
-
+	fseek(pokedex, 1 * OSADA_BLOCK_SIZE, SEEK_SET );
+	for(j=0 ; j<boot->bitmap_blocks ;j++){
+		fread(byte, OSADA_BLOCK_SIZE, 1, pokedex);
+		for(k=0 ; k<OSADA_BLOCK_SIZE ; k++){
 			for (i=0 ; i<8 ; i++){
 				mask = 1 << (7-i) ;
-				printf(byte[k] & mask ? "1" : "0");
+				bitmap[j*8*OSADA_BLOCK_SIZE   + k*8 + i] = byte[k] & mask ? 1 : 0 ;
 			}
-			printf(" ");
-			if ((k+1)%4 == 0) printf(" ");
-			if ((k+1)%8 == 0) printf("\n");
 		}
-
 	}
+	for(i=0 ; i<boot->fs_blocks ; i++){
+		if (i < 7 * OSADA_BLOCK_SIZE * 8){
+			if(i%64==0)printf("\n");
+			if(i%(64*8)==0)printf("Bloques %d a %d\n",i, i+64*8-1);
+			if(i%8==0)printf(" ");
+			if(i%32==0)printf(" ");
+			printf("%d",bitmap[i]);
+		}
+	}
+	free(bitmap);
 	
 
-	osada_file *file=calloc(1,sizeof(osada_file));
-	fseek(pokedex,((boot->bitmap_blocks)*64), SEEK_SET );
+	osada_file file_table[2048];
+	fseek(pokedex,((boot->bitmap_blocks+1)*OSADA_BLOCK_SIZE), SEEK_SET );
+	fread(file_table, sizeof(osada_file), 2048, pokedex);
 	for(i=0;i<2048;i++){
-		fgets(file->buffer, 32,pokedex);
-		if (file->state != 0){
-			printf("\nFile Status: %d",file->state);
-			printf("\nFile Status: %s",file->fname);
-			printf("\nFile Status: %d",file->file_size);
+		if (file_table[i].state != 0){
+			printf("\nFile Status: %d",file_table[i].state);
+			printf("\nFile Name: %s",file_table[i].fname);
+			printf("\nFile Size: %d\n",file_table[i].file_size);
 		}
 	}
-	free(file);
 
+	//uint32_t asig_table[boot->data_blocks];
+	uint32_t *asig_table = calloc(boot->data_blocks,sizeof(uint32_t));
+	fseek(pokedex,((boot->allocations_table_offset)*OSADA_BLOCK_SIZE), SEEK_SET );
+	fread(asig_table, sizeof(uint32_t), boot->data_blocks, pokedex);
+	for(i=0;i<(boot->data_blocks);i++){
+		if (asig_table[i] != 0xFFFFFFFF){
+			//if (i%16==0) printf("\n");
+			printf("Bloque[%d]: %08X\n",i,asig_table[i]);
+		}
+	}
+	free(asig_table);
+
+	
+	
 	printf("\nFin");
-	
-	
-
 	free(boot);
 	fclose(pokedex);
-	
 	return EXIT_SUCCESS;
 }
