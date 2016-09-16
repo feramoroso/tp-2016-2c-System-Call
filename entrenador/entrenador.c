@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include "entrenador.h"
 
 
@@ -23,6 +25,7 @@ int main ( int argc , char * argv []) {
 	strncpy(path + strlen(argv[2]), COACH_METADAMA ,strlen(COACH_METADAMA));
 	struct confCoach *configCoach = calloc(1,sizeof(struct confCoach));
 
+	conectarMapa();
 	get_config(configCoach, path);
 
 
@@ -76,3 +79,20 @@ void get_config(struct confCoach *configCoach, char *path){
 
 	config_destroy(coachConfig);
 }
+
+void conectarMapa(){
+	struct sockaddr_in direccionMapa;
+	direccionMapa.sin_family = AF_INET;
+	direccionMapa.sin_addr.s_addr = inet_addr("127.0.0.1");
+	direccionMapa.sin_port = htons(6666);
+
+	int entrenador = socket(AF_INET, SOCK_STREAM, 0);
+		if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {
+			perror("No se pudo conectar");
+			return;
+		}
+	printf("Entrenador conectado. Esperando su turno...");
+	send(entrenador, "Hola mapa", 9, 0);
+
+}
+
