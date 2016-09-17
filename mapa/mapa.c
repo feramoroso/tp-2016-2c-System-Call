@@ -73,15 +73,34 @@ int main(int argc , char *argv[]) {
 	//system("clear");
 	if (argc != 3) {
 		puts("Cantidad de parametros incorrecto!");
-		puts("Uso ./mapa <nombre_mapa> <ruta>");
+		puts("Uso: mapa <nombre_mapa> <ruta PokeDex>");
 		return EXIT_FAILURE;
 	}
 
 	//t_log *log = log_create(PATH_LOG_MAP, argv[1], true, 3);
 
-	/* OBTENER METADATA DEL MAPA */
+
 	strcpy(argv[2],RUTA_POKEDEX);
+	/* OBTENER METADATA DEL MAPA */
 	tMapaMetadata *mapaMetadata = getMapaMetadata(argv[1],argv[2]);
+	if (mapaMetadata == NULL) {
+		puts("No se encontro el mapa.");
+		return EXIT_FAILURE;
+	}
+
+	/* OBTENER METADATA DE LAS POKENESTS */
+		tPokeNestMetadata *pokeNestMetadata = getPokeNestMetadata(argv[1], "Pikachu", argv[2]);
+		if (pokeNestMetadata == NULL) {
+			puts("No se encontro la PokeNest.");
+			return EXIT_FAILURE;
+		}
+
+	/* OBTENER METADATA DE LOS POKEMON */
+	tPokemonMetadata *pokemonMetadata = getPokemonMetadata(argv[1], "Pikachu", 1, argv[2]);
+	if (pokemonMetadata == NULL) {
+		puts("No se encontro el Pokemon.");
+		return EXIT_FAILURE;
+	}
 
 	/* SECCION SOCKETS */
 	int socketEscucha , socketCliente , *socketNuevo;

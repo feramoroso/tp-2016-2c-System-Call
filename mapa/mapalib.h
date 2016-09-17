@@ -1,10 +1,10 @@
 #include <stdint.h>
 
 #define RUTA_POKEDEX "/home/utnso/TP/tp-2016-2c-System-Call/PokeDex"
-#define COMPLEMENTO_RUTA_MAPA "%s/Mapas/%s/metadata"
 
 #define PATH_LOG_MAP "../../pruebas/log_mapa.txt"
 
+/* Estructura para METADATA MAPA */
 typedef struct {
 	uint32_t  tiempoDeadlock;
 	uint32_t  batalla;
@@ -15,4 +15,24 @@ typedef struct {
 	uint32_t  puerto;
 } tMapaMetadata;
 
-tMapaMetadata * getMapaMetadata(char * nomMapa, char *ruta);
+/* Estructura para METADATA POKENEST */
+typedef struct {
+	char *tipo;
+	char *pos;
+	/*struct {
+		int x;
+		int y;
+	} pos;*/
+	char  ID;
+} tPokeNestMetadata;
+
+/* Estructura para METADATA POKEMON */
+typedef struct {
+	uint32_t  nivel;
+	char     *art;
+} tPokemonMetadata;
+
+tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex);
+tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex);
+tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, char *rutaPokeDex);
+

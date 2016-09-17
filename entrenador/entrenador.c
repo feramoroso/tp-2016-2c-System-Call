@@ -84,7 +84,7 @@ void conectarMapa(){
 	struct sockaddr_in direccionMapa;
 	direccionMapa.sin_family = AF_INET;
 	direccionMapa.sin_addr.s_addr = inet_addr("127.0.0.1");
-	direccionMapa.sin_port = htons(6666);
+	direccionMapa.sin_port = htons(5001);
 
 	int entrenador = socket(AF_INET, SOCK_STREAM, 0);
 		if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {
