@@ -1,59 +1,67 @@
-/*
+/*******************
     PROCESO MAPA
-*/
+*******************/
 
+/* STANDARD */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+/* SOCKETS */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
 #include <unistd.h>    //write
-#include <pthread.h> //for threading , link with lpthread
+
+/* HILOS linkear con lpthread */
+#include <pthread.h>
+
+/* COMMONS */
+#include <commons/config.h>
+#include <commons/string.h>
+#include <commons/log.h>
+#include <commons/collections/list.h>
+
+/* Libreria con funciones del Mapa */
+#include "mapalib.h"
 
 #define MAX_CON 10     // Conexiones máximas
-#define PUERTO 6666    // Puerto de Escucha
 #define T_NOM_HOST 128 // Tamaño del nombre del Server
-#define T_MENSAJE 128  // Tamaño del mensaje del cliente
+#define TAM_MENSAJE 128  // Tamaño del mensaje Cliente/Servidor
 
 /*
  * FUNCION DE HILO
  * Maneja las conexiones para cada cliente
  * */
-void *connection_handler(void *socketEntrenador)
+void *gestor_de_entrenadores(void *socket)
 {
     //Castea el descriptor del socket
-    int sock = *(int*)socketEntrenador;
+    int socketEntrenador = *(int*)socket;
     int bRecibidos;
-    char *message , client_message[T_MENSAJE];
+    char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
 
     //Manda mensaje al entrenador
-    message = "Bienvenido al Mapa <mapa>!\n";
-    write(sock , message , strlen(message));
+    sprintf(mensajeServer,"Bienvenido al Mapa!\n");//,argv[1]);
+    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    sprintf(mensajeServer,"Respondeme el saludo:\n");
+    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
 
-    message = "Respondeme el saludo: ";
-    write(sock , message , strlen(message));
-
-    //Recibe mensajes del entrenador cuando recv devuelve 0 o negeativo termina por desconexion o error
-    while( (bRecibidos = recv(sock , client_message , T_MENSAJE , 0)) > 0 )
-    {
-            	printf("Cantidad de Bytes recibidos : %d\n", bRecibidos);
-    	client_message[bRecibidos] = '\0';
-    	printf("Entrenador %d: %s\n", sock, client_message);
-    	//write(sock , client_message , strlen(client_message));
+    //Recibe mensajes del entrenador, cuando recv devuelve 0 o negativo termina por desconexion o error
+    while ((bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
+        printf("Cantidad de Bytes recibidos : %d\n", bRecibidos);
+        mensajeCliente[bRecibidos] = '\0';
+    	printf("Entrenador %d: %s\n", socketEntrenador, mensajeCliente);
     }
 
-    if(bRecibidos == 0)
-    {
-        printf("Entrenador %d Desconectado!\n", sock);
+    if (bRecibidos == 0) {
+        printf("Entrenador %d Desconectado!\n", socketEntrenador);
         fflush(stdout);
     }
-    else if(bRecibidos == -1)
-    {
+    else if(bRecibidos == -1) {
         perror("Error de Recepción");
     }
 
     //Free the socket pointer
-    free(socketEntrenador);
+    free(socket);
 
     return 0;
 }
@@ -61,82 +69,84 @@ void *connection_handler(void *socketEntrenador)
 /********************************************
  ****************** MAIN********************
  *******************************************/
-int main(int argc , char *argv[])
-{
-	if (argc != 2) {
-		system("clear");
-		printf("Cantidad de parametros incorrecto!\n");
-		printf("Uso ./mapa <nombre_mapa> <ruta>\n");
-		return (1);
+int main(int argc , char *argv[]) {
+	//system("clear");
+	if (argc != 3) {
+		puts("Cantidad de parametros incorrecto!");
+		puts("Uso ./mapa <nombre_mapa> <ruta>");
+		return EXIT_FAILURE;
 	}
 
-	int socket_desc , client_sock , c , *new_sock;
-    struct sockaddr_in server , client;
+	//t_log *log = log_create(PATH_LOG_MAP, argv[1], true, 3);
 
-	char hostname[T_NOM_HOST]; // Cadena para almacenar el nombre del Server
+	/* OBTENER METADATA DEL MAPA */
+	strcpy(argv[2],RUTA_POKEDEX);
+	tMapaMetadata *mapaMetadata = getMapaMetadata(argv[1],argv[2]);
 
-    //Creacion del Socket TCP
-    socket_desc = socket(AF_INET , SOCK_STREAM , 0);
-    if (socket_desc == -1)
-    {
+	/* SECCION SOCKETS */
+	int socketEscucha , socketCliente , *socketNuevo;
+	int addrlen; // Tamaño de Bytes aceptados por accept
+    struct sockaddr_in server , cliente;
+	char hostname[T_NOM_HOST]; // Cadena para almacenar el nombre del host del Server
+
+	/* Creacion del Socket TCP */
+    socketEscucha = socket(AF_INET , SOCK_STREAM , 0);
+    if (socketEscucha == -1) {
         puts("No se pudo crear el socket.");
-        return 1;
+        return EXIT_FAILURE;
     }
     puts("Socket creado!\n");
 
-    //Preparando la estructura
-    //server.sin_family = AF_INET;
-    //server.sin_addr.s_addr = INADDR_ANY;
-    //server.sin_port = htons( 8888 );
+
+    /* Preparando la estructura */
 	server.sin_family = AF_INET;
-	server.sin_port = htons(PUERTO);
-	server.sin_addr.s_addr = htonl(INADDR_ANY); // Mi propia dirección IP
-	memset(&(server.sin_zero), '\0', 8); // Pongo en 0 el resto de la estructura
+	server.sin_port = htons(mapaMetadata->puerto);   // Puerto extraido del archivo metadata
+	inet_aton(mapaMetadata->ip, &(server.sin_addr)); // IP extraida del archivo metadata
+	//server.sin_addr.s_addr = htonl(INADDR_ANY);    // Mi propia dirección IP
+	memset(&(server.sin_zero), '\0', 8);             // Pongo en 0 el resto de la estructura
 
+	/* Mostrar información de Conexión */
 	gethostname(hostname, T_NOM_HOST);
-	printf("Host Name : %s\n",hostname);
-	printf("Dirección : %s\n",inet_ntoa(server.sin_addr));
-	printf("Puerto    : %d\n\n",PUERTO);
+	printf("Host Name : %s\n", hostname);
+	printf("Dirección : %s\n", inet_ntoa(server.sin_addr));
+	printf("Puerto    : %d\n\n", mapaMetadata->puerto);
 
-	//Bind
-    if( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
-    {
-        //print the error message
-        perror("bind failed. Error");
-        return 1;
+	/* Enlace usando Bind() */
+    if( bind(socketEscucha,(struct sockaddr *)&server , sizeof(server)) == -1) {
+        perror("bind Fallo. Error");
+        return EXIT_FAILURE;
     }
     puts("Bind exitoso!");
 
-    //Listen
-    listen(socket_desc , MAX_CON);
+    /* Pongo a escuchar el Socket con listen() */
+    listen(socketEscucha , MAX_CON);
+    puts("Esperando entrenadores...");
 
-    //Accept and incoming connection
-    puts("Waiting for incoming connections...");
-    c = sizeof(struct sockaddr_in);
+    addrlen = sizeof(struct sockaddr_in);
 
-    while( (client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) )
-    {
+    while( (socketCliente = accept(socketEscucha, (struct sockaddr *)&cliente, (socklen_t*)&addrlen)) ) {
         puts("Conexión Aceptada!");
 
-        pthread_t sniffer_thread;
-        new_sock = malloc(1);
-        *new_sock = client_sock;
+        pthread_t nuevoHilo;
+        socketNuevo = malloc(1);
+        *socketNuevo = socketCliente;
 
-        if( pthread_create( &sniffer_thread , NULL ,  connection_handler , (void*) new_sock) < 0)
-        {
+        if( pthread_create( &nuevoHilo, NULL,  gestor_de_entrenadores, (void*) socketNuevo) < 0 ) {
             perror("No se pudo crear el hilo para el Entrenador.");
-            return 1;
+            return EXIT_FAILURE;
         }
 
         //Now join the thread , so that we dont terminate before the thread
-        //pthread_join( sniffer_thread , NULL);
-        puts("Handler assigned");
+        //pthread_join( nuevo_hilo , NULL);
+        puts("Nuevo Hilo en Ejecucuión.");
     }
 
-    if (client_sock == -1 ) {
-        perror("Error de accept");
-        return 3;
+    if (socketCliente == -1 ) {
+        perror("No se pudo Aceptar la conexión.");
+        return EXIT_FAILURE;
     }
 
-    return 0;
+    free(mapaMetadata);
+	//log_destroy(log);
+    return EXIT_SUCCESS;
 }
