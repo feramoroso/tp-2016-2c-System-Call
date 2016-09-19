@@ -9,6 +9,7 @@
 #include <commons/string.h>
 #include <commons/log.h>
 #include <commons/collections/list.h>
+#include <commons/collections/queue.h>
 
 /* Libreria con funciones del Mapa */
 #include "mapalib.h"
@@ -50,27 +51,33 @@ tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex) {
 /* Recibe el nombre del mapa, el nombre del PokeNest y la Ruta del PokeDex
  *  y retorna una estructura con la metadata del  */
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex) {
-
 	tPokeNestMetadata *pokeNestMetadata = malloc(sizeof(tPokeNestMetadata));
 	strcpy(pokeNestMetadata->nombre, nomPokeNest);
-
-	char ruta[256];
-	sprintf(ruta, "%s/Mapas/%s/PokeNests/%s/metadata", rutaPokeDex, nomMapa, nomPokeNest);
-	t_config *pokeNestConfig = config_create(ruta);
+	t_config *pokeNestConfig = config_create(string_from_format("%s/Mapas/%s/PokeNests/%s/metadata", rutaPokeDex, nomMapa, nomPokeNest));
 	if (pokeNestConfig == NULL) return NULL; //Chequeo Errores
-	printf("\nRuta PokeNest:\n%s", ruta);
 	strcpy(pokeNestMetadata->tipo, config_get_string_value(pokeNestConfig, "Tipo"));
 	pokeNestMetadata->posx = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[0]);
 	pokeNestMetadata->posy = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[1]);
-	pokeNestMetadata->ID    = config_get_string_value(pokeNestConfig, "Identificador")[0];
+	pokeNestMetadata->id    = config_get_string_value(pokeNestConfig, "Identificador")[0];
 	config_destroy(pokeNestConfig);
 	return pokeNestMetadata;
 }
 
+/** Recibe el nombre de la PokeNest, el numero de orden y la Ruta del **
+ ** PokeNest y retorna una estructura con la metadata del Pokemon *****/
+tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPokeNest) {
+	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
+	t_config *pokemonConfig = config_create(string_from_format("%s/%s%03d.dat", rutaPokeNest, nomPokeNest, ord));
+	if (pokemonConfig == NULL) return NULL; //Chequeo Errores
+	pokemonMetadata->nivel = config_get_int_value(pokemonConfig, "Nivel");
+	config_destroy(pokemonConfig);
+//	printf("\nNombre del Pokemon: %s", nomPokeNest);
+//	printf("\nNivel Pokemon:      %d\n\n", pokemonMetadata->nivel);
+	return pokemonMetadata;
+}
 /* Recibe el nombre del mapa, el nombre del Pokemon, su numero de orden y la Ruta del PokeDex
  *  y retorna una estructura con la metadata del Pokemon ***********************************/
-
-tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, char *rutaPokeDex) {
+/*tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, char *rutaPokeDex) {
 
 	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
 	strcpy(pokemonMetadata->nombre, nomPokemon);
@@ -89,4 +96,4 @@ tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, 
 
 	return pokemonMetadata;
 }
-
+*/

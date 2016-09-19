@@ -17,10 +17,12 @@
 #include <pthread.h>
 
 /* COMMONS */
+#include <commons/error.h>
 #include <commons/config.h>
 #include <commons/string.h>
 #include <commons/log.h>
 #include <commons/collections/list.h>
+#include <commons/collections/queue.h>
 
 /* Libreria con funciones del Mapa */
 #include "mapalib.h"
@@ -39,7 +41,7 @@
  *********************/
 /*Metadatas*/
 tMapaMetadata     *mapaMetadata;      // Estructura con la Metadaata del Mapa
-tPokeNestMetadata *pokeNestArray[3];  // Arreglo con las distintas PokeNest
+tPokeNestMetadata *pokeNestArray[10];  // Arreglo con las distintas PokeNest
 tPokemonMetadata  *pokemonMetadata;   // Estructura con la Metadaata de los Pokemon
 
 
@@ -56,41 +58,14 @@ void *gestor_de_entrenadores(void *socket)
     int socketEntrenador = *(int*)socket;
     int bRecibidos;
     char simbolo;
-    int posx, posy;
+    int x = 1, y = 1;
     char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
 
     //Manda mensaje al entrenador
-    sprintf(mensajeServer,"Bienvenido al Mapa %s!\n", mapaMetadata->nombre);
-    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
-    sprintf(mensajeServer,"Respondeme el saludo:\n");
+    sprintf(mensajeServer,"\nBienvenido al Mapa %s!\n\nEmpieza el juego!\n\nIngrese Simbolo Personaje:", mapaMetadata->nombre);
     send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
 
-    //Recibe el saludo del entrenador, cuando recv devuelve 0 o negativo termina por desconexion o error
     bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0);
-    printf("Cantidad de Bytes recibidos : %d\n", bRecibidos);
-    mensajeCliente[bRecibidos] = '\0';
-    printf("Entrenador %d: %s\n", socketEntrenador, mensajeCliente);
-
-    sprintf(mensajeServer,"\nEmpieza el juego!\n\n Ingrese Simbolo Personaje: \n\n 1 - Derecha\n 2 - Izquierda\n 3 - Arriba\n 4 - Abajo\n");
-    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
-
-    recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0);
-
-    simbolo = mensajeCliente[0];
-    CrearPersonaje(items, simbolo, 1, 1);
-    nivel_gui_dibujar(items, mapaMetadata->nombre);
-
-    getchar();
-    /*
-    //Recibe mensajes del entrenador, cuando recv devuelve 0 o negativo termina por desconexion o error
-    while ((bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
-        printf("Cantidad de Bytes recibidos : %d\n", bRecibidos);
-        mensajeCliente[bRecibidos] = '\0';
-    	printf("Entrenador %d: %s\n", socketEntrenador, mensajeCliente);
-    }*/
-
-
-
     if (bRecibidos == 0) {
         printf("Entrenador %d Desconectado!\n", socketEntrenador);
         fflush(stdout);
@@ -99,8 +74,41 @@ void *gestor_de_entrenadores(void *socket)
         perror("Error de Recepción");
     }
 
+    simbolo = mensajeCliente[0];
+    CrearPersonaje(items, simbolo, x, y);
+    nivel_gui_dibujar(items, mapaMetadata->nombre);
+
+    sprintf(mensajeServer,"Buena suerte!\n\n1 - Derecha\n2 - Izquierda\n3 - Arriba\n4 - Abajo\n");
+    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+
+    while ((bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
+    	switch (mensajeCliente[0]) {
+    	case '1':
+    		x++;
+    		break;
+    	case '2':
+    		x--;
+    		break;
+    	case '3':
+    		y--;
+    		break;
+    	case '4':
+    		y++;
+    		break;
+    	}
+    	MoverPersonaje(items, simbolo, x, y);
+    	nivel_gui_dibujar(items, mapaMetadata->nombre);
+    }
+    if (bRecibidos == 0) {
+        printf("Entrenador %c Desconectado!", simbolo);
+        fflush(stdout);
+    }
+    else if(bRecibidos == -1) {
+        perror("Error de Recepción");
+    }
+
     BorrarItem(items, simbolo);
-    nivel_gui_terminar();
+    nivel_gui_dibujar(items, mapaMetadata->nombre);
     free(socket);
     return EXIT_SUCCESS;
 }
@@ -114,21 +122,49 @@ int getPokeNestArray(char *nomMapa, char *rutaPokeDex) {
 	dir = opendir(ruta);
 	while ((dirPokeNest = readdir(dir))) {
 		if ( (dirPokeNest->d_type == DT_DIR) && (strcmp(dirPokeNest->d_name, ".")) && (strcmp(dirPokeNest->d_name, "..")) ) {
-
 			if ( (pokeNestArray[i] = getPokeNestMetadata(nomMapa, dirPokeNest->d_name, rutaPokeDex)) == NULL) {
 				closedir(dir);
 				return EXIT_FAILURE;
 			}
-			printf("\nNombre de la PokeNest: %s", pokeNestArray[i]->nombre);
-			printf("\nTipo:                  %s", pokeNestArray[i]->tipo);
-			printf("\nPosición en x:         %d", pokeNestArray[i]->posx);
-			printf("\nPosición en y:         %d", pokeNestArray[i]->posy);
-			printf("\nIdentificador:         %c\n\n", pokeNestArray[i]->ID);
 			i++;
 		}
 	}
+	pokeNestArray[i] = NULL;
 	closedir(dir);
 	return EXIT_SUCCESS;
+}
+
+int getPokemonsQueue(char *nomMapa, char *rutaPokeDex) {
+	int i = 0, j;
+	tPokemonMetadata *pokemonMetadata;
+	while (pokeNestArray[i]) {
+		pokeNestArray[i]->pokemons = queue_create();
+		char ruta[256];
+		sprintf(ruta, "%s/Mapas/%s/PokeNests/%s", rutaPokeDex, nomMapa, pokeNestArray[i]->nombre);
+		j = 1;
+		while ((pokemonMetadata = getPokemonMetadata(pokeNestArray[i]->nombre, j, ruta))) {
+			queue_push(pokeNestArray[i]->pokemons, pokemonMetadata);
+			j++;
+		}
+		i++;
+	}
+	return EXIT_SUCCESS;
+}
+
+void imprimirInfoPokeNest() {
+	int i = 0;
+	while(pokeNestArray[i]) {
+		printf("\nPokeNest:         %s", pokeNestArray[i]->nombre);
+		printf("\nTipo:             %s", pokeNestArray[i]->tipo);
+		printf("\nPosición en x:    %d", pokeNestArray[i]->posx);
+		printf("\nPosición en y:    %d", pokeNestArray[i]->posy);
+		printf("\nIdentificador:    %c\n", pokeNestArray[i]->id);
+		if(!queue_is_empty(pokeNestArray[i]->pokemons)) {
+			printf("\nInstancias:       %d", queue_size(pokeNestArray[i]->pokemons));
+			printf("\nNivel 1º en cola: %d\n\n\n", (*(tPokemonMetadata*)(queue_peek(pokeNestArray[i]->pokemons))).nivel);
+		}
+		i++;
+	}
 }
 
 /********************************************
@@ -149,25 +185,19 @@ int main(int argc , char *argv[]) {
 		puts("\nNo se encontro el mapa.");
 		return EXIT_FAILURE;
 	}
-
+	/* OBTENER ARREGLO DE POKENEST */
 	if (getPokeNestArray(mapaMetadata->nombre, argv[2])) {
-		puts("\nNo se encontro la PokeNest.");
+		error_show("PokeNest invalida.\n");
 		return EXIT_FAILURE;
 	}
 
-	/* OBTENER METADATA DE LAS POKENESTS *//*
-	pokeNestMetadata = getPokeNestMetadata(mapaMetadata->nombre, "Pikachu", argv[2]);
-	if (pokeNestMetadata == NULL) {
-		puts("No se encontro la PokeNest.");
-		return EXIT_FAILURE;
-	}*/
-
-	/* OBTENER METADATA DE LOS POKEMON */
-	pokemonMetadata = getPokemonMetadata(mapaMetadata->nombre, "Pikachu", 1, argv[2]);
-	if (pokemonMetadata == NULL) {
-		puts("\nNo se encontro el Pokemon.");
+	/* OBTENER COLA DE POKEMONS EN CADA POKENEST */
+	if (getPokemonsQueue(mapaMetadata->nombre, argv[2])) {
+		error_show("Error en la PokeNest.\n");
 		return EXIT_FAILURE;
 	}
+	imprimirInfoPokeNest();
+
 
 	/* SECCION SOCKETS */
 	int socketEscucha , socketCliente , *socketNuevo;
@@ -208,28 +238,28 @@ int main(int argc , char *argv[]) {
     /* Pongo a escuchar el Socket con listen() */
     listen(socketEscucha , MAX_CON);
     puts("Esperando entrenadores...");
+    puts("Presione Enter para continuar...");
     getchar();
 
 
 
-    /*******************
-     * Grafico el mapa
-     *******************/
+    /*****************************
+    ******** MODO GRAFICO ********
+    *****************************/
     items = list_create();
     int i = 0;
-    while ( pokeNestArray[i]) {
-    	CrearCaja(items, pokeNestArray[i]->ID, pokeNestArray[i]->posx, pokeNestArray[i]->posy, 5);
+    while (pokeNestArray[i]) {
+    	CrearCaja(items, pokeNestArray[i]->id, pokeNestArray[i]->posx, pokeNestArray[i]->posy, queue_size(pokeNestArray[i]->pokemons));
     	i++;
     }
 
     nivel_gui_inicializar();
-    int finx, finy;
-    nivel_gui_get_area_nivel(&finx, &finy);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
+    /*****************************/
 
     addrlen = sizeof(struct sockaddr_in);
     while( (socketCliente = accept(socketEscucha, (struct sockaddr *)&cliente, (socklen_t*)&addrlen)) ) {
-        puts("Conexión Aceptada!");
+        //puts("Conexión Aceptada!");
 
         pthread_t nuevoHilo;
         socketNuevo = malloc(1);
@@ -239,12 +269,11 @@ int main(int argc , char *argv[]) {
             perror("No se pudo crear el hilo para el Entrenador.");
             return EXIT_FAILURE;
         }
-
-        puts("Nuevo Hilo en Ejecución.");
+        //puts("Nuevo Hilo en Ejecución.");
         //Por el momento no vamos a esperar que termine
         //pthread_join( nuevo_hilo , NULL);
     }
-
+    nivel_gui_terminar();
     if (socketCliente == -1 ) {
         perror("No se pudo Aceptar la conexión.");
         return EXIT_FAILURE;
