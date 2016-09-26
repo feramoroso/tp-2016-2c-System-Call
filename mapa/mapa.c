@@ -47,6 +47,17 @@ tPokemonMetadata  *pokemonMetadata;   // Estructura con la Metadaata de los Poke
 
 t_list *items; //Lista de elementos a graficar
 
+char rutaMedalla[256];
+
+int getPokeNestFromID(char id) {
+	int i = 0;
+	while (pokeNestArray[i]) {
+		if (pokeNestArray[i]->id == id)
+			return i;
+		i++;
+	}
+	return i;
+}
 
 /********************************************
 ************* FUNCION DE HILO ***************
@@ -58,10 +69,11 @@ void *gestor_de_entrenadores(void *socket)
     int socketEntrenador = *(int*)socket;
     int bRecibidos;
     char simbolo;
-    int x = 1, y = 1;
+    int x = 1, y = 1, auxPos, auxX, auxY;
     char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
 
     //Manda mensaje al entrenador
+    printf("Nueva conexión!");
     sprintf(mensajeServer,"\nBienvenido al Mapa %s!\n\nEmpieza el juego!\n\nIngrese Simbolo Personaje:", mapaMetadata->nombre);
     send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
 
@@ -78,22 +90,59 @@ void *gestor_de_entrenadores(void *socket)
     CrearPersonaje(items, simbolo, x, y);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
 
-    sprintf(mensajeServer,"Buena suerte!\n\n1 - Derecha\n2 - Izquierda\n3 - Arriba\n4 - Abajo\n");
+    sprintf(mensajeServer,"Buena suerte!\n\nMR - Derecha\nML - Izquierda\nMU - Arriba\nMD - Abajo\n");
+    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    sprintf(mensajeServer,"\nCX - Coordenadas PokeNest X\nGX - Obtener Pokemon X\nO - Ruta Medalla del Mapa\n\n\n");
     send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
 
     while ((bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
     	switch (mensajeCliente[0]) {
-    	case '1':
-    		x++;
+    	case 'C':
+    		auxPos = getPokeNestFromID(mensajeCliente[1]);
+    		if (pokeNestArray[auxPos] != NULL) {
+    			auxX = pokeNestArray[auxPos]->posx;
+    			auxY = pokeNestArray[auxPos]->posy;
+    			sprintf(mensajeServer,"%2d%2d\n", auxX, auxY);
+    		}
+    		else
+    			sprintf(mensajeServer,"No existe la PokeNest\n");
+    		send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
     		break;
-    	case '2':
-    		x--;
+    	case 'M':
+    		switch (mensajeCliente[1]) {
+			case 'R':
+				x++;
+				break;
+			case 'L':
+				x--;
+				break;
+			case 'D':
+				y++;
+				break;
+			case 'U':
+				y--;
+				break;
+    		}
     		break;
-    	case '3':
-    		y--;
+    	case 'G':
+    		auxPos = getPokeNestFromID(mensajeCliente[1]);
+    		if (pokeNestArray[auxPos] != NULL) {
+    			if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
+    				queue_pop(pokeNestArray[auxPos]->pokemons);
+    				restarRecurso(items, pokeNestArray[auxPos]->id);
+    				sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
+    			}
+    			else
+    				sprintf(mensajeServer,"Se acabaron los %s.\n", pokeNestArray[auxPos]->nombre);
+    		}
+    		else
+    			sprintf(mensajeServer,"No existe la PokeNest\n");
+
+    		send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
     		break;
-    	case '4':
-    		y++;
+    	case 'O':
+    		send(socketEntrenador, rutaMedalla, strlen(rutaMedalla), 0);
+    		send(socketEntrenador, "\n", 1, 0);
     		break;
     	}
     	MoverPersonaje(items, simbolo, x, y);
@@ -178,7 +227,7 @@ int main(int argc , char *argv[]) {
 	}
 
 	//t_log *log = log_create(PATH_LOG_MAP, argv[1], true, 3);
-	strcpy(argv[2],RUTA_POKEDEX);
+	//strcpy(argv[2],RUTA_POKEDEX);
 	/* OBTENER METADATA DEL MAPA */
 	mapaMetadata = getMapaMetadata(argv[1],argv[2]);
 	if (mapaMetadata == NULL) {
@@ -190,12 +239,14 @@ int main(int argc , char *argv[]) {
 		error_show("PokeNest invalida.\n");
 		return EXIT_FAILURE;
 	}
-
 	/* OBTENER COLA DE POKEMONS EN CADA POKENEST */
 	if (getPokemonsQueue(mapaMetadata->nombre, argv[2])) {
 		error_show("Error en la PokeNest.\n");
 		return EXIT_FAILURE;
 	}
+	/* OBTENER LA RUTA DE LA MEDALLA */
+	sprintf(rutaMedalla,"%s/Mapas/%s/medalla-%s.jpg",argv[2],argv[1],argv[1]);
+
 	imprimirInfoPokeNest();
 
 
@@ -219,7 +270,6 @@ int main(int argc , char *argv[]) {
 	server.sin_family = AF_INET;
 	server.sin_port = htons(mapaMetadata->puerto);   // Puerto extraido del archivo metadata
 	inet_aton(mapaMetadata->ip, &(server.sin_addr)); // IP extraida del archivo metadata
-	//server.sin_addr.s_addr = htonl(INADDR_ANY);    // Mi propia dirección IP
 	memset(&(server.sin_zero), '\0', 8);             // Pongo en 0 el resto de la estructura
 
 	/* Mostrar información de Conexión */
@@ -237,17 +287,16 @@ int main(int argc , char *argv[]) {
 
     /* Pongo a escuchar el Socket con listen() */
     listen(socketEscucha , MAX_CON);
-    puts("Esperando entrenadores...");
-    puts("Presione Enter para continuar...");
+
+
+    puts("Presione Enter para iniciar el modo gráfico...");
     getchar();
-
-
-
     /*****************************
     ******** MODO GRAFICO ********
     *****************************/
-    items = list_create();
+    items = list_create();  // Creo la Lista de elementos del Mapa
     int i = 0;
+    /* Creo las diferentes PokeNest recorriendo el arreglo de PokeNest*/
     while (pokeNestArray[i]) {
     	CrearCaja(items, pokeNestArray[i]->id, pokeNestArray[i]->posx, pokeNestArray[i]->posy, queue_size(pokeNestArray[i]->pokemons));
     	i++;
@@ -255,16 +304,17 @@ int main(int argc , char *argv[]) {
 
     nivel_gui_inicializar();
     nivel_gui_dibujar(items, mapaMetadata->nombre);
+    printf("Esperando entrenadores...");
     /*****************************/
 
+    /*****************************
+    ********  CONEXIONES  ********
+    *****************************/
     addrlen = sizeof(struct sockaddr_in);
     while( (socketCliente = accept(socketEscucha, (struct sockaddr *)&cliente, (socklen_t*)&addrlen)) ) {
-        //puts("Conexión Aceptada!");
-
         pthread_t nuevoHilo;
         socketNuevo = malloc(1);
         *socketNuevo = socketCliente;
-
         if( pthread_create( &nuevoHilo, NULL,  gestor_de_entrenadores, (void*) socketNuevo) ) {
             perror("No se pudo crear el hilo para el Entrenador.");
             return EXIT_FAILURE;

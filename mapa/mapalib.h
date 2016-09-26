@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#define RUTA_POKEDEX "/home/utnso/TP/tp-2016-2c-System-Call/PokeDex"
+//#define RUTA_POKEDEX "/home/utnso/TP/tp-2016-2c-System-Call/PokeDex"
 #define PATH_LOG_MAP "../../pruebas/log_mapa.txt"
 
 /* Estructura para METADATA MAPA */
