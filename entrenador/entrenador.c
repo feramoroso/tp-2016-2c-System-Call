@@ -7,8 +7,8 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include "../mapa/mapalib.h"
 #include "entrenador.h"
-
 
 int main ( int argc , char * argv []) {
 	t_log *log = log_create(PATH_LOG_COACH , PROGRAM_COACH , true , 3);
@@ -16,18 +16,33 @@ int main ( int argc , char * argv []) {
 	if (argc != 3) {
 		printf("Error en cantidad de parametros\n");
 		return EXIT_FAILURE;
-	}else{
+	}
 		printf("Nombre del Entrenador: \t%s\n", argv[1]);
 		printf("Path Pokedex Cliente: \t%s\n\n", argv[2]);
-	}
+
 	char *path = calloc(1, strlen(argv[2])+strlen(COACH_METADAMA));
 	strncpy(path, argv[2],strlen(argv[2]));
 	strncpy(path + strlen(argv[2]), COACH_METADAMA ,strlen(COACH_METADAMA));
 	struct confCoach *configCoach = calloc(1,sizeof(struct confCoach));
 
-	conectarMapa();
+	//LEVANTA METADATA DEL ENTRENADOR
 	get_config(configCoach, path);
 
+	//LEVANTA LA METADATA DEL MAPA
+	tMapaMetadata *mapaMetadata = getMapaMetadata(configCoach->hojaDeViaje[0], "../PokeDex");
+
+	// CONECTARSE AL MAPA
+		struct sockaddr_in direccionMapa;
+		direccionMapa.sin_family = AF_INET;
+		direccionMapa.sin_addr.s_addr = inet_addr(mapaMetadata->ip);
+		direccionMapa.sin_port = htons(mapaMetadata->puerto);
+
+		int entrenador = socket(AF_INET, SOCK_STREAM, 0);
+			if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {
+				perror("No se pudo conectar");
+				return EXIT_FAILURE;
+			}
+		printf("Entrenador conectado. Esperando su turno...");
 
 	free(configCoach);
 	log_destroy(log);
@@ -45,54 +60,37 @@ void get_config(struct confCoach *configCoach, char *path){
 	configCoach->nombre[strlen(configCoach->nombre)-1]='\0';
 	printf("\nNombre: %s [%c]",configCoach->nombre, configCoach->simbolo);
 
-	configCoach->hojadeviaje = config_get_array_value(coachConfig, "hojaDeViaje");
-//nada
-	while(configCoach->hojadeviaje[i] != NULL){
-		if (configCoach->hojadeviaje[i+1] == NULL){
-			configCoach->hojadeviaje[i][strlen(configCoach->hojadeviaje[i])-1]='\0';
+	configCoach->hojaDeViaje = config_get_array_value(coachConfig, "hojaDeViaje");
+
+	while(configCoach->hojaDeViaje[i] != NULL){
+		if (configCoach->hojaDeViaje[i+1] == NULL){
+			configCoach->hojaDeViaje[i][strlen(configCoach->hojaDeViaje[i])-1]='\0';
 		}
-		printf("\nHoja de Viaje[%d]: %s",i+1,configCoach->hojadeviaje[i]);
+		printf("\nHoja de Viaje[%d]: %s",i+1,configCoach->hojaDeViaje[i]);
 		i++;
 	}
-	configCoach->objetivos = list_create();
 	for (j = 0 ; j<i; j++){
 		char *mapa = calloc(1,sizeof(char*));
+		//ARREGLAR PEDIDO DE MEMORIA: TIRA ERROR CUANDO SE LIBERA
 		strcpy(mapa, "obj[");
-		strcpy(mapa+4,configCoach->hojadeviaje[j]);
+		strcpy(mapa+4,configCoach->hojaDeViaje[j]);
 		strcpy(mapa+strlen(mapa), "]");
 		printf("\n%s:",mapa);
-		char **obj = config_get_array_value(coachConfig, mapa);
+		configCoach->objetivos = config_get_array_value(coachConfig, mapa);
 		int x = 0;
-		while(obj[x] != NULL){
-			if (obj[x+1] == NULL){
-				obj[x][strlen(obj[x])-1]='\0';
+		while(configCoach->objetivos[x]){
+			if (configCoach->objetivos[x+1] == NULL){
+				configCoach->objetivos[x][strlen(configCoach->objetivos[x])-1]='\0';
 			}
-			printf("%s - ",obj[x]);
+			printf("%s - ",configCoach->objetivos[x]);
 			x++;
-		//list_add(configCoach->objetivos,);
 		}
-		free(mapa);
+		//free(mapa);
 	}
 	configCoach->vidas = config_get_int_value(coachConfig, "vidas");
 	configCoach->reintentos = config_get_int_value(coachConfig, "reintentos");
 	printf("\nVidas: %d - Reintentos: %d\n\n",configCoach->vidas, configCoach->reintentos);
 
-	config_destroy(coachConfig);
 }
 
-void conectarMapa(){
-	struct sockaddr_in direccionMapa;
-	direccionMapa.sin_family = AF_INET;
-	direccionMapa.sin_addr.s_addr = inet_addr("127.0.0.1");
-	direccionMapa.sin_port = htons(5001);
-
-	int entrenador = socket(AF_INET, SOCK_STREAM, 0);
-		if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {
-			perror("No se pudo conectar");
-			return;
-		}
-	printf("Entrenador conectado. Esperando su turno...");
-	send(entrenador, "Hola mapa", 9, 0);
-
-}
 
