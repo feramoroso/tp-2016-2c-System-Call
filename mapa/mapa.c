@@ -11,16 +11,17 @@
 /* SOCKETS */
 #include <sys/socket.h>
 #include <arpa/inet.h> //inet_addr
-#include <unistd.h>    //write
+#include <unistd.h>    //write & sleep
 
 /* HILOS linkear con lpthread */
 #include <pthread.h>
 
-/* COMMONS */
+/* COMMONS linkear con lcommons  */
 #include <commons/error.h>
 #include <commons/config.h>
 #include <commons/string.h>
 #include <commons/log.h>
+#include <commons/process.h>
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
@@ -36,19 +37,22 @@
 #define TAM_MENSAJE 128  // Tamaño del mensaje Cliente/Servidor
 
 
-/**********************
- * VARIABLES GLOBALES *
- *********************/
+/****************************************
+ ********** VARIABLES GLOBALES **********
+ ****************************************/
 /*Metadatas*/
-tMapaMetadata     *mapaMetadata;      // Estructura con la Metadaata del Mapa
+tMapaMetadata     *mapaMetadata;       // Estructura con la Metadaata del Mapa
 tPokeNestMetadata *pokeNestArray[10];  // Arreglo con las distintas PokeNest
-tPokemonMetadata  *pokemonMetadata;   // Estructura con la Metadaata de los Pokemon
+tPokemonMetadata  *pokemonMetadata;    // Estructura con la Metadaata de los Pokemon
 
+t_queue  *eReady;                      // Cola de Entrenadores Listos
+t_list   *eBlocked;                    // Lista de Entrenadores Bloqueados
 
-t_list *items; //Lista de elementos a graficar
+t_list   *items;                       // Lista de elementos a graficar
 
-char rutaMedalla[256];
+char rutaMedalla[256];                 // Ruta del archivo de la medalla del Mapa
 
+/* Obtiene la posicion de la PokeNest id en el pokeNestArray */
 int getPokeNestFromID(char id) {
 	int i = 0;
 	while (pokeNestArray[i]) {
@@ -65,99 +69,121 @@ int getPokeNestFromID(char id) {
 ********************************************/
 void *gestor_de_entrenadores(void *socket)
 {
-    //Castea el descriptor del socket
-    int socketEntrenador = *(int*)socket;
     int bRecibidos;
-    char simbolo;
-    int x = 1, y = 1, auxPos, auxX, auxY;
+    int auxPos, auxX, auxY, distancia;
     char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
 
-    //Manda mensaje al entrenador
-    printf("Nueva conexión!");
-    sprintf(mensajeServer,"\nBienvenido al Mapa %s!\n\nEmpieza el juego!\n\nIngrese Simbolo Personaje:", mapaMetadata->nombre);
-    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    tEntrenador *entrenador = malloc(sizeof(tEntrenador));
+    entrenador->threadID = process_get_thread_id();
+    entrenador->socket   = *(int*)socket;   //Castea el descriptor del socket
+    entrenador->time     = time(0);
+    entrenador->posx     = 1;
+    entrenador->posy     = 1;
+    entrenador->pokemons = list_create();
 
-    bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0);
+    //Manda mensaje al entrenador
+    nivel_gui_dibujar(items, mapaMetadata->nombre);
+    write(0,"Nueva conexión!                         ",40);
+    sprintf(mensajeServer,"\nBienvenido al Mapa %s!\n\nEmpieza el juego!\n\nIngrese Simbolo Personaje:", mapaMetadata->nombre);
+    send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+
+    bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
     if (bRecibidos == 0) {
-        printf("Entrenador %d Desconectado!\n", socketEntrenador);
+    	nivel_gui_dibujar(items, mapaMetadata->nombre);
+    	printf("Entrenador %d Desconectado!", entrenador->socket);
         fflush(stdout);
     }
     else if(bRecibidos == -1) {
         perror("Error de Recepción");
     }
 
-    simbolo = mensajeCliente[0];
-    CrearPersonaje(items, simbolo, x, y);
+    entrenador->id = mensajeCliente[0];
+    CrearPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
 
     sprintf(mensajeServer,"Buena suerte!\n\nMR - Derecha\nML - Izquierda\nMU - Arriba\nMD - Abajo\n");
-    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
     sprintf(mensajeServer,"\nCX - Coordenadas PokeNest X\nGX - Obtener Pokemon X\nO - Ruta Medalla del Mapa\n\n\n");
-    send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
 
-    while ((bRecibidos = recv(socketEntrenador, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
+    while ((bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0)) > 0 ) {
     	switch (mensajeCliente[0]) {
+    	/* OBTENER COORDENADA OBJETIVO */
     	case 'C':
+    		entrenador->obj = mensajeCliente[1];
     		auxPos = getPokeNestFromID(mensajeCliente[1]);
     		if (pokeNestArray[auxPos] != NULL) {
     			auxX = pokeNestArray[auxPos]->posx;
     			auxY = pokeNestArray[auxPos]->posy;
-    			sprintf(mensajeServer,"%3d%3d\n", auxX, auxY);
+    			distancia = distanciaObjetivo(entrenador, pokeNestArray);
+    			sprintf(mensajeServer,"%3d%3d\nDistancia: %d\n", auxX, auxY, distancia);
     		}
     		else
     			sprintf(mensajeServer,"No existe la PokeNest\n");
-    		send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    		send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
     		break;
+        /* MOVER AL ENTRENADOR */
     	case 'M':
     		switch (mensajeCliente[1]) {
 			case 'R':
-				x++;
+				entrenador->posx++;
 				break;
 			case 'L':
-				x--;
+				entrenador->posx--;
 				break;
 			case 'D':
-				y++;
+				entrenador->posy++;
 				break;
 			case 'U':
-				y--;
+				entrenador->posy--;
 				break;
     		}
     		break;
+    	/* CAPTURAR EL POKEMON */
     	case 'G':
-    		auxPos = getPokeNestFromID(mensajeCliente[1]);
-    		if (pokeNestArray[auxPos] != NULL) {
-    			if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
-    				queue_pop(pokeNestArray[auxPos]->pokemons);
-    				restarRecurso(items, pokeNestArray[auxPos]->id);
-    				sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
-    			}
-    			else
-    				sprintf(mensajeServer,"Se acabaron los %s.\n", pokeNestArray[auxPos]->nombre);
+    		if (entrenador->obj == mensajeCliente[1]) {
+				auxPos = getPokeNestFromID(mensajeCliente[1]);
+				if (pokeNestArray[auxPos] != NULL) {
+					distancia = distanciaObjetivo(entrenador, pokeNestArray);
+					if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
+						if(distancia == 0) {
+							list_add(entrenador->pokemons, queue_pop(pokeNestArray[auxPos]->pokemons));
+							restarRecurso(items, pokeNestArray[auxPos]->id);
+							sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
+						}
+						else
+							sprintf(mensajeServer,"Aun se encuentra a %d de la PokeNest %s!\n", distancia, pokeNestArray[auxPos]->nombre);
+					}
+					else
+						sprintf(mensajeServer,"Lo siento se acabaron los %s. A cola de Bloqueados....\n", pokeNestArray[auxPos]->nombre);
+				}
+				else
+					sprintf(mensajeServer,"No existe la PokeNest!\n");
     		}
     		else
-    			sprintf(mensajeServer,"No existe la PokeNest\n");
-
-    		send(socketEntrenador, mensajeServer, strlen(mensajeServer), 0);
+    			sprintf(mensajeServer,"Solicitar el objetivo primero!\n");
+    		send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
     		break;
+        /* OBTENER MEDALLA */
     	case 'O':
-    		send(socketEntrenador, rutaMedalla, strlen(rutaMedalla), 0);
-    		send(socketEntrenador, "\n", 1, 0);
+    		send(entrenador->socket, rutaMedalla, strlen(rutaMedalla), 0);
+    		send(entrenador->socket, "\n", 1, 0);
     		break;
     	}
-    	MoverPersonaje(items, simbolo, x, y);
+    	MoverPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
     	nivel_gui_dibujar(items, mapaMetadata->nombre);
     }
     if (bRecibidos == 0) {
-        printf("Entrenador %c Desconectado!", simbolo);
+        printf("Entrenador %c Desconectado!", entrenador->id);
         fflush(stdout);
     }
     else if(bRecibidos == -1) {
         perror("Error de Recepción");
     }
-
-    BorrarItem(items, simbolo);
+    devolverPokemons(items, entrenador, pokeNestArray);
+    BorrarItem(items, entrenador->id);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
+    free(entrenador);
     free(socket);
     return EXIT_SUCCESS;
 }
@@ -200,25 +226,9 @@ int getPokemonsQueue(char *nomMapa, char *rutaPokeDex) {
 	return EXIT_SUCCESS;
 }
 
-void imprimirInfoPokeNest() {
-	int i = 0;
-	while(pokeNestArray[i]) {
-		printf("\nPokeNest:         %s", pokeNestArray[i]->nombre);
-		printf("\nTipo:             %s", pokeNestArray[i]->tipo);
-		printf("\nPosición en x:    %d", pokeNestArray[i]->posx);
-		printf("\nPosición en y:    %d", pokeNestArray[i]->posy);
-		printf("\nIdentificador:    %c\n", pokeNestArray[i]->id);
-		if(!queue_is_empty(pokeNestArray[i]->pokemons)) {
-			printf("\nInstancias:       %d", queue_size(pokeNestArray[i]->pokemons));
-			printf("\nNivel 1º en cola: %d\n\n\n", (*(tPokemonMetadata*)(queue_peek(pokeNestArray[i]->pokemons))).nivel);
-		}
-		i++;
-	}
-}
-
-/********************************************
-******************* MAIN*********************
-********************************************/
+/***************************************************************************************************************************************************/
+/**************************************************   MAIN   ***************************************************************************************/
+/***************************************************************************************************************************************************/
 int main(int argc , char *argv[]) {
 	if (argc != 3) {
 		puts("Cantidad de parametros incorrecto!");
@@ -227,11 +237,13 @@ int main(int argc , char *argv[]) {
 	}
 
 	//t_log *log = log_create(PATH_LOG_MAP, argv[1], true, 3);
-	//strcpy(argv[2],RUTA_POKEDEX);
+
+/**************************************************   SECCION METADATA   ***************************************************************************/
 	/* OBTENER METADATA DEL MAPA */
 	mapaMetadata = getMapaMetadata(argv[1],argv[2]);
 	if (mapaMetadata == NULL) {
-		puts("\nNo se encontro el mapa.");
+		error_show("No se encontro el mapa.\n");
+		//puts("\nNo se encontro el mapa.");
 		return EXIT_FAILURE;
 	}
 	/* OBTENER ARREGLO DE POKENEST */
@@ -247,24 +259,20 @@ int main(int argc , char *argv[]) {
 	/* OBTENER LA RUTA DE LA MEDALLA */
 	sprintf(rutaMedalla,"%s/Mapas/%s/medalla-%s.jpg",argv[2],argv[1],argv[1]);
 
-	imprimirInfoPokeNest();
+	imprimirInfoPokeNest(pokeNestArray);
 
-
-	/* SECCION SOCKETS */
+/**************************************************   SECCION SOCKETS   ****************************************************************************/
 	int socketEscucha , socketCliente , *socketNuevo;
-	int addrlen; // Tamaño de Bytes aceptados por accept
+	int addrlen;                                       // Tamaño de Bytes aceptados por accept
     struct sockaddr_in server , cliente;
-	char hostname[T_NOM_HOST]; // Cadena para almacenar el nombre del host del Server
+	char hostname[T_NOM_HOST];                         // Cadena para almacenar el nombre del host del Server
 
 	/* Creacion del Socket TCP */
-    socketEscucha = socket(AF_INET , SOCK_STREAM , 0);
+    socketEscucha = socket(AF_INET, SOCK_STREAM, 0);
     if (socketEscucha == -1) {
-        puts("No se pudo crear el socket.");
+    	error_show("No se pudo crear el socket.\n");
         return EXIT_FAILURE;
     }
-
-    puts("Socket creado!\n");
-
 
     /* Preparando la estructura */
 	server.sin_family = AF_INET;
@@ -286,14 +294,11 @@ int main(int argc , char *argv[]) {
     puts("Bind exitoso!");
 
     /* Pongo a escuchar el Socket con listen() */
-    listen(socketEscucha , MAX_CON);
+    listen(socketEscucha, MAX_CON);
 
-
+/**************************************************   SECCION GRAFICO   ****************************************************************************/
     puts("Presione Enter para iniciar el modo gráfico...");
     getchar();
-    /*****************************
-    ******** MODO GRAFICO ********
-    *****************************/
     items = list_create();  // Creo la Lista de elementos del Mapa
     int i = 0;
     /* Creo las diferentes PokeNest recorriendo el arreglo de PokeNest*/
@@ -304,12 +309,9 @@ int main(int argc , char *argv[]) {
 
     nivel_gui_inicializar();
     nivel_gui_dibujar(items, mapaMetadata->nombre);
-    printf("Esperando entrenadores...");
-    /*****************************/
+    write(0,"Esperando entrenadores...",25);
 
-    /*****************************
-    ********  CONEXIONES  ********
-    *****************************/
+/**************************************************   SECCION CONEXIONES   *************************************************************************/
     addrlen = sizeof(struct sockaddr_in);
     while( (socketCliente = accept(socketEscucha, (struct sockaddr *)&cliente, (socklen_t*)&addrlen)) ) {
         pthread_t nuevoHilo;
@@ -329,6 +331,7 @@ int main(int argc , char *argv[]) {
         return EXIT_FAILURE;
     }
 
+/**************************************************   SECCION CIERRES   ****************************************************************************/
     free(mapaMetadata);
     //free(pokeNestArray);
     free(pokemonMetadata);

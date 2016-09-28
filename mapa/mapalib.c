@@ -11,6 +11,10 @@
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
+/* Librerias del graficador */
+#include <curses.h>
+#include "tad_items.h"
+
 /* Libreria con funciones del Mapa */
 #include "mapalib.h"
 
@@ -23,11 +27,10 @@ tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex) {
 	strcpy(mapaMetadata->nombre, nomMapa);
 	char ruta[256];
 	sprintf(ruta, "%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre);
-	printf("\nRuta Mapa:\n%s", ruta);
-
 
 	t_config *mapConfig = config_create(ruta);
 	if (mapConfig == NULL) return NULL; // En caso de error devuelvo NULL
+	printf("\nRuta Mapa:\n%s", ruta);
 	mapaMetadata->tiempoDeadlock  = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
 	mapaMetadata->batalla         = config_get_int_value(mapConfig, "Batalla");
 	strcpy(mapaMetadata->algoritmo, config_get_string_value(mapConfig, "algoritmo"));
@@ -70,10 +73,9 @@ tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPoke
 	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
 	t_config *pokemonConfig = config_create(string_from_format("%s/%s%03d.dat", rutaPokeNest, nomPokeNest, ord));
 	if (pokemonConfig == NULL) return NULL; //Chequeo Errores
+	pokemonMetadata->id = nomPokeNest[0];
 	pokemonMetadata->nivel = config_get_int_value(pokemonConfig, "Nivel");
 	config_destroy(pokemonConfig);
-//	printf("\nNombre del Pokemon: %s", nomPokeNest);
-//	printf("\nNivel Pokemon:      %d\n\n", pokemonMetadata->nivel);
 	return pokemonMetadata;
 }
 /* Recibe el nombre del mapa, el nombre del Pokemon, su numero de orden y la Ruta del PokeDex
@@ -98,3 +100,54 @@ tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPoke
 	return pokemonMetadata;
 }
 */
+
+void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]) {
+	int i = 0;
+	while(pokeNestArray[i]) {
+		printf("\nPokeNest:         %s", pokeNestArray[i]->nombre);
+		printf("\nTipo:             %s", pokeNestArray[i]->tipo);
+		printf("\nPosición en x:    %d", pokeNestArray[i]->posx);
+		printf("\nPosición en y:    %d", pokeNestArray[i]->posy);
+		printf("\nIdentificador:    %c\n", pokeNestArray[i]->id);
+		if(!queue_is_empty(pokeNestArray[i]->pokemons)) {
+			printf("\nInstancias:       %d", queue_size(pokeNestArray[i]->pokemons));
+			printf("\nNivel 1º en cola: %d\n\n\n", (*(tPokemonMetadata*)(queue_peek(pokeNestArray[i]->pokemons))).nivel);
+		}
+		i++;
+	}
+}
+
+void sumarRecurso(t_list* items, char id) {
+    ITEM_NIVEL* item = _search_item_by_id(items, id);
+    item->quantity = item->quantity + 1;
+}
+
+void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
+	tPokemonMetadata *pokemon;
+	while(!list_is_empty(entrenador->pokemons)) {
+		pokemon = (tPokemonMetadata*)list_remove(entrenador->pokemons, 0);
+		int i = 0;
+		while(pokeNestArray[i]->id != pokemon->id)
+			i++;
+		if(pokeNestArray[i] != NULL) {
+			queue_push(pokeNestArray[i]->pokemons, pokemon);
+			sumarRecurso(items, pokeNestArray[i]->id);
+		}
+	}
+}
+
+int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
+	int x, y, i = 0;
+	if (pokeNestArray[i] && entrenador->obj) {
+		while(pokeNestArray[i]->id != entrenador->obj)
+			i++;
+		if(pokeNestArray[i] != NULL) {
+			x = abs(pokeNestArray[i]->posx - entrenador->posx);
+			y = abs(pokeNestArray[i]->posy - entrenador->posy);
+			return x + y;
+		}
+		else
+			return -2; // Objetivo no encontrado o PokeNest Vacia
+	}
+	return -1; // Objetivo no establecido o PokeNest Vacia
+}
