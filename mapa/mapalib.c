@@ -28,22 +28,23 @@ tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex) {
 
 	t_config *mapConfig = config_create(ruta);
 	if (mapConfig == NULL) return NULL; // En caso de error devuelvo NULL
-	mapaMetadata->tiempoDeadlock = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
-	mapaMetadata->batalla        = config_get_int_value(mapConfig, "Batalla");
+	mapaMetadata->tiempoDeadlock  = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
+	mapaMetadata->batalla         = config_get_int_value(mapConfig, "Batalla");
 	strcpy(mapaMetadata->algoritmo, config_get_string_value(mapConfig, "algoritmo"));
-	mapaMetadata->quantum        = config_get_int_value(mapConfig, "quantum");
-	mapaMetadata->retardo        = config_get_int_value(mapConfig, "retardo");
-	strcpy(mapaMetadata->ip, config_get_string_value(mapConfig, "IP"));
-	mapaMetadata->puerto         = config_get_int_value(mapConfig, "Puerto");
+	mapaMetadata->quantum         = config_get_int_value(mapConfig, "quantum");
+	mapaMetadata->retardo         = config_get_int_value(mapConfig, "retardo");
+	strcpy(mapaMetadata->ip,        config_get_string_value(mapConfig, "IP"));
+	mapaMetadata->puerto          = config_get_int_value(mapConfig, "Puerto");
 	config_destroy(mapConfig);
 
-	printf("\nNombre del Mapa:            %s", mapaMetadata->nombre);
-	printf("\nTiempo de chequeo DeadLock: %d", mapaMetadata->tiempoDeadlock);
-	printf("\nBatalla:                    %d", mapaMetadata->batalla);
-	printf("\nAlgoritmo:                  %s", mapaMetadata->algoritmo);
-	printf("\nQuantum:                    %d", mapaMetadata->quantum);
-	printf("\nIP Mapa:                    %s", mapaMetadata->ip);
-	printf("\nPuerto:                     %d\n\n",mapaMetadata->puerto);
+	printf("\nNombre del Mapa:                 %s", mapaMetadata->nombre);
+	printf("\nTiempo de chequeo DeadLock (ms): %d", mapaMetadata->tiempoDeadlock);
+	printf("\nBatalla:                         %d", mapaMetadata->batalla);
+	printf("\nAlgoritmo:                       %s", mapaMetadata->algoritmo);
+	printf("\nQuantum:                         %d", mapaMetadata->quantum);
+	printf("\nRetardo entre Quantums (ms):     %d", mapaMetadata->retardo);
+	printf("\nIP Mapa:                         %s", mapaMetadata->ip);
+	printf("\nPuerto:                          %d\n\n",mapaMetadata->puerto);
 
 	return mapaMetadata;
 }

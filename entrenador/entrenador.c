@@ -29,13 +29,15 @@ int main ( int argc , char * argv []) {
 	get_config(configCoach, path);
 
 	//LEVANTA LA METADATA DEL MAPA
-	tMapaMetadata *mapaMetadata = getMapaMetadata(configCoach->hojaDeViaje[0], "../PokeDex");
+	tMapaMetadata *mapaMetadata = getMapaMetadata(configCoach->hojaDeViaje[0], argv[2]);
 
 	// CONECTARSE AL MAPA
-		struct sockaddr_in direccionMapa;
-		direccionMapa.sin_family = AF_INET;
-		direccionMapa.sin_addr.s_addr = inet_addr(mapaMetadata->ip);
-		direccionMapa.sin_port = htons(mapaMetadata->puerto);
+	/* Preparando la estructura */
+	struct sockaddr_in direccionMapa;
+	direccionMapa.sin_family = AF_INET;
+	direccionMapa.sin_port = htons(mapaMetadata->puerto);   // Puerto extraido del archivo metadata
+	inet_aton(mapaMetadata->ip, &(direccionMapa.sin_addr)); // IP extraida del archivo metadata
+	memset(&(direccionMapa.sin_zero), '\0', 8);             // Pongo en 0 el resto de la estructura
 
 		int entrenador = socket(AF_INET, SOCK_STREAM, 0);
 			if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {

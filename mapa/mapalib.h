@@ -1,5 +1,12 @@
 #include <stdint.h>
 
+/* COMMONS */
+#include <commons/config.h>
+#include <commons/string.h>
+#include <commons/log.h>
+#include <commons/collections/list.h>
+#include <commons/collections/queue.h>
+
 //#define RUTA_POKEDEX "/home/utnso/TP/tp-2016-2c-System-Call/PokeDex"
 #define PATH_LOG_MAP "../../pruebas/log_mapa.txt"
 
@@ -22,7 +29,7 @@ typedef struct {
 	uint32_t  posx;
 	uint32_t  posy;
 	char      id;
-	t_queue    *pokemons;
+	t_queue  *pokemons;
 } tPokeNestMetadata;
 
 /* Estructura para METADATA POKEMON */

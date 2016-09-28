@@ -102,7 +102,7 @@ void *gestor_de_entrenadores(void *socket)
     		if (pokeNestArray[auxPos] != NULL) {
     			auxX = pokeNestArray[auxPos]->posx;
     			auxY = pokeNestArray[auxPos]->posy;
-    			sprintf(mensajeServer,"%2d%2d\n", auxX, auxY);
+    			sprintf(mensajeServer,"%3d%3d\n", auxX, auxY);
     		}
     		else
     			sprintf(mensajeServer,"No existe la PokeNest\n");
