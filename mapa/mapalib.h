@@ -52,12 +52,13 @@ typedef struct {
 
 
 tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex);
-//tPokeNestMetadata **getPokeNestArray(char *nomMapa, char *rutaPokeDex);
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex);
 tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPokeNest);
-//tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, char *rutaPokeDex);
+//tPokeNestMetadata **getPokeNestArray(char *nomMapa, char *rutaPokeDex);
+int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
+int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
+
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
 void sumarRecurso(t_list* items, char id);
 void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
-//int obtenerCoordenadas(char *sCoordenadas, tPokeNestMetadata *pokeNestMetadata);

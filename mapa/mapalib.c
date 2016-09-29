@@ -101,6 +101,44 @@ tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPoke
 }
 */
 
+int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex) {
+	int i = 0;
+	DIR *dir;
+	struct dirent *dirPokeNest;
+	char ruta[256];
+	sprintf(ruta, "%s/Mapas/%s/PokeNests/", rutaPokeDex, nomMapa);
+	dir = opendir(ruta);
+	while ((dirPokeNest = readdir(dir))) {
+		if ( (dirPokeNest->d_type == DT_DIR) && (strcmp(dirPokeNest->d_name, ".")) && (strcmp(dirPokeNest->d_name, "..")) ) {
+			if ( (pokeNestArray[i] = getPokeNestMetadata(nomMapa, dirPokeNest->d_name, rutaPokeDex)) == NULL) {
+				closedir(dir);
+				return EXIT_FAILURE;
+			}
+			i++;
+		}
+	}
+	pokeNestArray[i] = NULL;
+	closedir(dir);
+	return EXIT_SUCCESS;
+}
+
+int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex) {
+	int i = 0, j;
+	tPokemonMetadata *pokemonMetadata;
+	while (pokeNestArray[i]) {
+		pokeNestArray[i]->pokemons = queue_create();
+		char ruta[256];
+		sprintf(ruta, "%s/Mapas/%s/PokeNests/%s", rutaPokeDex, nomMapa, pokeNestArray[i]->nombre);
+		j = 1;
+		while ((pokemonMetadata = getPokemonMetadata(pokeNestArray[i]->nombre, j, ruta))) {
+			queue_push(pokeNestArray[i]->pokemons, pokemonMetadata);
+			j++;
+		}
+		i++;
+	}
+	return EXIT_SUCCESS;
+}
+
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]) {
 	int i = 0;
 	while(pokeNestArray[i]) {
