@@ -7,7 +7,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include "../mapa/mapalib.h"
+#include "mapalib.h"
 #include "entrenador.h"
 
 int main ( int argc , char * argv []) {
@@ -44,7 +44,7 @@ int main ( int argc , char * argv []) {
 				perror("No se pudo conectar");
 				return EXIT_FAILURE;
 			}
-		printf("Entrenador conectado. Esperando su turno...");
+		printf("Entrenador conectado.\n");
 
 	free(configCoach);
 	log_destroy(log);
@@ -72,8 +72,7 @@ void get_config(struct confCoach *configCoach, char *path){
 		i++;
 	}
 	for (j = 0 ; j<i; j++){
-		char *mapa = calloc(1,sizeof(char*));
-		//ARREGLAR PEDIDO DE MEMORIA: TIRA ERROR CUANDO SE LIBERA
+		char *mapa = malloc(128);
 		strcpy(mapa, "obj[");
 		strcpy(mapa+4,configCoach->hojaDeViaje[j]);
 		strcpy(mapa+strlen(mapa), "]");
@@ -87,7 +86,7 @@ void get_config(struct confCoach *configCoach, char *path){
 			printf("%s - ",configCoach->objetivos[x]);
 			x++;
 		}
-		//free(mapa);
+		free(mapa);
 	}
 	configCoach->vidas = config_get_int_value(coachConfig, "vidas");
 	configCoach->reintentos = config_get_int_value(coachConfig, "reintentos");
