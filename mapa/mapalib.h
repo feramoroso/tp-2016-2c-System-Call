@@ -35,6 +35,7 @@ typedef struct {
 typedef struct {
 	char      id;
 	uint32_t  nivel;
+	uint32_t  ord;
 	//char     *art;
 } tPokemonMetadata;
 
@@ -53,7 +54,7 @@ typedef struct {
 
 tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex);
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex);
-tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPokeNest);
+tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char *rutaPokeNest);
 //tPokeNestMetadata **getPokeNestArray(char *nomMapa, char *rutaPokeDex);
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
@@ -61,5 +62,8 @@ int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *ru
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
 void sumarRecurso(t_list* items, char id);
 void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
+void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 void moverEntrenador(tEntrenador *entrenador, char eje);
+int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
+int entregarPokemon(t_list *eBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
