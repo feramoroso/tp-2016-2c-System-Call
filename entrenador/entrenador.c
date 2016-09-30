@@ -10,6 +10,10 @@
 #include "mapalib.h"
 #include "entrenador.h"
 
+//VARIABLES GLOBALES
+int posX, posY;
+char movAnt;
+
 int main ( int argc , char * argv []) {
 	t_log *log = log_create(PATH_LOG_COACH , PROGRAM_COACH , true , 3);
 
@@ -45,6 +49,36 @@ int main ( int argc , char * argv []) {
 				return EXIT_FAILURE;
 			}
 		printf("Entrenador conectado.\n");
+
+		send(entrenador, configCoach->simbolo, 1, 0);
+
+
+		//INICIAR VIAJE
+		int estado=SOLICITA_POKENEST;
+		posX=posY=0;
+		int posPokNX=0;
+		int posPokNY=0;
+
+		while(estado!=FINALIZO_MAPA){
+			int nroPok=0;
+			char* mensaje = malloc(128);
+			switch(estado){
+				case SOLICITA_POKENEST:
+					strcpy(mensaje, "C");
+					strcpy(mensaje+1, configCoach->objetivos[nroPok]);
+					send(entrenador, mensaje, 128, 0);
+					//RECIBIR MENSAJE CON LA POKENEST
+					estado=AVANZAR_POSICION;
+					break;
+				case AVANZAR_POSICION:
+					mensaje = avanzarPosicion(posPokNX, posPokNY);
+					if(strcmp(mensaje, "Ubicado en pokenest")==0)
+						estado=ATRAPAR_POKEMON;
+					else
+						send(entrenador, mensaje, 128, 0);
+					break;
+				}
+			}
 
 	free(configCoach);
 	log_destroy(log);
@@ -94,4 +128,68 @@ void get_config(struct confCoach *configCoach, char *path){
 
 }
 
+char* avanzarPosicion(int x, int y){
+	if(posX==x && posY==y)
+		return "Ubicado en pokenest";
+	if(posX==0 && posY==0){
+		if(x>posX)
+			return moverDerecha();
+		if(y>posY)
+			return moverAbajo();
+	} //CASO DEL PRIMER MOVIMIENTO
 
+	if(posX!=x && posY!=y){
+		if(posX>x){
+			if(posY>y){
+				if(movAnt!='D')
+					return moverAbajo();
+				return moverDerecha();
+			}
+			if(movAnt!='U')
+				return moverArriba();
+			return moverDerecha();
+		}
+		if(posY>y){
+			if(movAnt!='D')
+				return moverAbajo();
+			return moverIzquierda();
+		}
+		if(movAnt!='U')
+			return moverArriba();
+		return moverIzquierda();
+	}
+
+	if(posX!=x){
+		if(posX>x)
+			return moverDerecha();
+		return moverIzquierda();
+	}
+
+	if(posY>y)
+		return moverAbajo();
+	return moverArriba();
+}
+
+char* moverDerecha(){
+	++posX;
+	movAnt='R';
+	return "MR";
+}
+
+char* moverIzquierda(){
+	--posX;
+	movAnt='L';
+	return "ML";
+}
+
+char* moverArriba(){
+	--posY;
+	movAnt='U';
+	return "MU";
+}
+
+char* moverAbajo(){
+	++posY;
+	movAnt='D';
+	return "MD";
+}

@@ -5,6 +5,11 @@
 #define PATH_LOG_COACH "log_entrenador.txt"
 #define PROGRAM_COACH "entrenador"
 
+#define SOLICITA_POKENEST 1
+#define AVANZAR_POSICION 2
+#define ATRAPAR_POKEMON 3
+#define FINALIZO_MAPA 4
+
 struct confCoach{
 	char 	*nombre;
 	char	simbolo;
@@ -15,3 +20,10 @@ struct confCoach{
 }confCoach;
 
 void get_config(struct confCoach *entrenadorMetadata, char *path);
+
+char* avanzarPosicion(int, int);
+
+char* moverDerecha();
+char* moverIzquierda();
+char* moverAbajo();
+char* moverArriba();
