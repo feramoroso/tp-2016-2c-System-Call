@@ -1,12 +1,12 @@
-//#include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
-//#include <unistd.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <fuse.h>
-//#include <stdint.h>
+#include <stdint.h>
 #include <errno.h>
 #include <string.h>
-//#include <commons/log.h>
+#include <commons/log.h>
 #include "pokeServ.h"
 
 fs_osada_t fs_tmp;
