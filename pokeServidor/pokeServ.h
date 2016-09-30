@@ -13,7 +13,7 @@
 
 #define OSADA_BLOCK_SIZE 64
 #define OSADA_FILENAME_LENGTH 17
-#define MAX_FILES 10
+#define MAX_FILES 2048
 
 typedef unsigned char osada_block[OSADA_BLOCK_SIZE];
 typedef uint32_t osada_block_pointer;
