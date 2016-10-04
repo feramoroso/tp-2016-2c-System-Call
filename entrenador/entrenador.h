@@ -1,5 +1,5 @@
-#include<stdint.h>
-#include<commons/collections/list.h>
+#include <stdint.h>
+#include <commons/collections/list.h>
 
 #define COACH_METADAMA "/Entrenadores/Red/metadata.txt"
 #define PATH_LOG_COACH "log_entrenador.txt"

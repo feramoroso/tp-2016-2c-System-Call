@@ -50,8 +50,10 @@ int main ( int argc , char * argv []) {
 			}
 		printf("Entrenador conectado.\n");
 
-		send(entrenador, configCoach->simbolo, 1, 0);
-
+		/* Manda el simbolo al Mapa */
+		char mensajeMapa[3];
+		sprintf(mensajeMapa, "%c", configCoach->simbolo);
+		send(entrenador, mensajeMapa, 2, 0);
 
 		//INICIAR VIAJE
 		int estado=SOLICITA_POKENEST;
