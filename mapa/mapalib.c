@@ -189,3 +189,20 @@ int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[
 	}
 	return -1; // Objetivo no establecido o PokeNest Vacia
 }
+
+void moverEntrenador(tEntrenador *entrenador, char eje) {
+	switch (eje) {
+	case 'R':
+		entrenador->posx++;
+		break;
+	case 'L':
+		entrenador->posx--;
+		break;
+	case 'D':
+		entrenador->posy++;
+		break;
+	case 'U':
+		entrenador->posy--;
+		break;
+	}
+}

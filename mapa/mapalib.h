@@ -62,3 +62,4 @@ void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
 void sumarRecurso(t_list* items, char id);
 void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
+void moverEntrenador(tEntrenador *entrenador, char eje);

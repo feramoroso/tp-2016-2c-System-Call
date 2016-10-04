@@ -43,10 +43,10 @@ tMapaMetadata     *mapaMetadata;       // Estructura con la Metadaata del Mapa
 tPokeNestMetadata *pokeNestArray[10];  // Arreglo con las distintas PokeNest
 tPokemonMetadata  *pokemonMetadata;    // Estructura con la Metadaata de los Pokemon
 
-t_list  *eReady;                      // Lista de Entrenadores Listos
-t_list  *eBlocked;                    // Lista de Entrenadores Bloqueados
+t_list  *eReady;                       // Lista de Entrenadores Listos
+t_list  *eBlocked;                     // Lista de Entrenadores Bloqueados
 
-t_list  *items;                       // Lista de elementos a graficar
+t_list  *items;                        // Lista de elementos a graficar
 
 char rutaMedalla[256];                 // Ruta del archivo de la medalla del Mapa
 
@@ -63,122 +63,194 @@ int getPokeNestFromID(char id) {
 	return i;
 }
 
-
-/************************************************ HILO PLANIFICADOR ROUND ROBIN  *******************************************************************/
-void *planRR() {
-    int ql;               // Quantum restante
+bool _menor_distancia(tEntrenador *entrenador, tEntrenador *entrenador_menor_distancia) {
+    return distanciaObjetivo(entrenador, pokeNestArray) < distanciaObjetivo(entrenador_menor_distancia, pokeNestArray);
+}
+/************************************************    PLANIFICADOR ROUND ROBIN    *******************************************************************/
+void planRR() {
     int bRecibidos;
     int auxPos, auxX, auxY, distancia;
     char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
-    tEntrenador *entrenador;
+    tEntrenador *entrenador = (tEntrenador*)list_remove(eReady, 0);
+	int ql = mapaMetadata->quantum;          // Quantum restante
+	while (ql) {
+		bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
+		if (bRecibidos == 0) {
+			devolverPokemons(items, entrenador, pokeNestArray);
+			BorrarItem(items, entrenador->id);
+			nivel_gui_dibujar(items, mapaMetadata->nombre);
+			printf("Entrenador %c Desconectado!", entrenador->id);
+			fflush(stdout);
+			close(entrenador->socket);
+			free(entrenador);
+			break;
+		}
+		else if(bRecibidos == -1) {
+			perror("Error de Recepción");
+			break;
+		}
 
-    while(1) {
-		if (!list_is_empty(eReady)) {
-    		ql = mapaMetadata->quantum;
-    		entrenador = (tEntrenador*)list_remove(eReady, 0);
-
-			sprintf(mensajeServer,"\n\nBuena suerte %c!\n\nMR - Derecha\nML - Izquierda\nMU - Arriba\nMD - Abajo\n", entrenador->id);
-			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
-			sprintf(mensajeServer,"\nCX - Coordenadas PokeNest X\nGX - Obtener Pokemon X\nO - Ruta Medalla del Mapa\n\n\n");
-			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
-
-			while (ql) {
-				bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
-				if (bRecibidos == 0) {
-					printf("Entrenador %c Desconectado!", entrenador->id);
-					fflush(stdout);
-					devolverPokemons(items, entrenador, pokeNestArray);
-					BorrarItem(items, entrenador->id);
-					nivel_gui_dibujar(items, mapaMetadata->nombre);
-					close(entrenador->socket);
-					free(entrenador);
-					ql = 0;
-				}
-				else if(bRecibidos == -1) {
-					perror("Error de Recepción");
-				}
-				else {
-					switch (mensajeCliente[0]) {
-					/* OBTENER COORDENADA OBJETIVO */
-					case 'C':
-						entrenador->obj = mensajeCliente[1];
-						auxPos = getPokeNestFromID(mensajeCliente[1]);
-						if (pokeNestArray[auxPos] != NULL) {
-							auxX = pokeNestArray[auxPos]->posx;
-							auxY = pokeNestArray[auxPos]->posy;
-							distancia = distanciaObjetivo(entrenador, pokeNestArray);
-							sprintf(mensajeServer,"%3d%3d\nDistancia: %d\n", auxX, auxY, distancia);
-						}
-						else
-							sprintf(mensajeServer,"No existe la PokeNest\n");
-						send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
-						break;
-					/* MOVER AL ENTRENADOR */
-					case 'M':
-						switch (mensajeCliente[1]) {
-						case 'R':
-							entrenador->posx++;
-							break;
-						case 'L':
-							entrenador->posx--;
-							break;
-						case 'D':
-							entrenador->posy++;
-							break;
-						case 'U':
-							entrenador->posy--;
-							break;
-						}
-						break;
-					/* CAPTURAR EL POKEMON */
-					case 'G':
-						if (entrenador->obj == mensajeCliente[1]) {
-							auxPos = getPokeNestFromID(mensajeCliente[1]);
-							if (pokeNestArray[auxPos] != NULL) {
-								distancia = distanciaObjetivo(entrenador, pokeNestArray);
-								if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
-									if(distancia == 0) {
-										list_add(entrenador->pokemons, queue_pop(pokeNestArray[auxPos]->pokemons));
-										restarRecurso(items, pokeNestArray[auxPos]->id);
-										sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
-										ql = 1;
-									}
-									else
-										sprintf(mensajeServer,"Aun se encuentra a %d de la PokeNest %s!\n", distancia, pokeNestArray[auxPos]->nombre);
-								}
-								else
-									sprintf(mensajeServer,"Lo siento se acabaron los %s. A cola de Bloqueados....\n", pokeNestArray[auxPos]->nombre);
-							}
-							else
-								sprintf(mensajeServer,"No existe la PokeNest!\n");
-						}
-						else
-							sprintf(mensajeServer,"Solicitar el objetivo primero!\n");
-						send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
-						break;
-					/* OBTENER MEDALLA */
-					case 'O':
-						send(entrenador->socket, rutaMedalla, strlen(rutaMedalla), 0);
-						send(entrenador->socket, "\n", 1, 0);
-						break;
-					}
-					MoverPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
-					nivel_gui_dibujar(items, mapaMetadata->nombre);
-					ql--;
-					if (!ql) {
-						sprintf(mensajeServer,"Entrenador %c has sido Bloquedo!\n", entrenador->id);
-						send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
-						list_add(eReady, entrenador);
-					}
-				}
+		switch (mensajeCliente[0]) {
+		/* OBTENER COORDENADA OBJETIVO */
+		case 'C':
+			entrenador->obj = mensajeCliente[1];
+			auxPos = getPokeNestFromID(mensajeCliente[1]);
+			if (pokeNestArray[auxPos] != NULL) {
+				auxX = pokeNestArray[auxPos]->posx;
+				auxY = pokeNestArray[auxPos]->posy;
+				distancia = distanciaObjetivo(entrenador, pokeNestArray);
+				sprintf(mensajeServer,"%3d%3d\nDistancia: %d\n", auxX, auxY, distancia);
 			}
-    	}
-    }
+			else
+				sprintf(mensajeServer,"No existe la PokeNest\n");
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			break;
+		/* MOVER AL ENTRENADOR */
+		case 'M':
+			moverEntrenador(entrenador, mensajeCliente[1]);
+			break;
+		/* CAPTURAR EL POKEMON */
+		case 'G':
+			if (entrenador->obj == mensajeCliente[1]) {
+				auxPos = getPokeNestFromID(mensajeCliente[1]);
+				if (pokeNestArray[auxPos] != NULL) {
+					distancia = distanciaObjetivo(entrenador, pokeNestArray);
+					if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
+						if(distancia == 0) {
+							list_add(entrenador->pokemons, queue_pop(pokeNestArray[auxPos]->pokemons));
+							restarRecurso(items, pokeNestArray[auxPos]->id);
+							sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
+							ql = 1;
+						}
+						else
+							sprintf(mensajeServer,"Aun se encuentra a %d de la PokeNest %s!\n", distancia, pokeNestArray[auxPos]->nombre);
+					}
+					else
+						sprintf(mensajeServer,"Lo siento se acabaron los %s. A cola de Bloqueados....\n", pokeNestArray[auxPos]->nombre);
+				}
+				else
+					sprintf(mensajeServer,"No existe la PokeNest!\n");
+			}
+			else
+				sprintf(mensajeServer,"Solicitar el objetivo primero!\n");
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			break;
+		/* OBTENER MEDALLA */
+		case 'O':
+			send(entrenador->socket, rutaMedalla, strlen(rutaMedalla), 0);
+			send(entrenador->socket, "\n", 1, 0);
+			break;
+		}
+
+		MoverPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
+		nivel_gui_dibujar(items, mapaMetadata->nombre);
+		ql--;
+		if (ql == 0) {
+			sprintf(mensajeServer,"Entrenador %c ha finalizado su Quantum!\n", entrenador->id);
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			list_add(eReady, entrenador);
+		}
+	}
 }
 
-/************************************************    HILO PLANIFICADOR SRDF      *******************************************************************/
-void *planSRDF() {
+/************************************************       PLANIFICADOR SRDF        *******************************************************************/
+void planSRDF() {
+    int bloqueado = 0;
+	int bRecibidos;
+    int auxPos, auxX, auxY, distancia;
+    char mensajeServer[TAM_MENSAJE] , mensajeCliente[TAM_MENSAJE];
+    list_sort(eReady, (void*)_menor_distancia);                      // Ordeno la lista por menor distancia
+    tEntrenador *entrenador = (tEntrenador*)list_remove(eReady, 0);  // Saco al primero
+	while (!bloqueado) {
+		bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
+		if (bRecibidos == 0) {
+			devolverPokemons(items, entrenador, pokeNestArray);
+			BorrarItem(items, entrenador->id);
+			nivel_gui_dibujar(items, mapaMetadata->nombre);
+			printf("Entrenador %c Desconectado!", entrenador->id);
+			fflush(stdout);
+			close(entrenador->socket);
+			free(entrenador);
+			break;
+		}
+		else if(bRecibidos == -1) {
+			perror("Error de Recepción");
+			break;
+		}
 
+		switch (mensajeCliente[0]) {
+		/* OBTENER COORDENADA OBJETIVO */
+		case 'C':
+			entrenador->obj = mensajeCliente[1];
+			auxPos = getPokeNestFromID(mensajeCliente[1]);
+			if (pokeNestArray[auxPos] != NULL) {
+				auxX = pokeNestArray[auxPos]->posx;
+				auxY = pokeNestArray[auxPos]->posy;
+				distancia = distanciaObjetivo(entrenador, pokeNestArray);
+				sprintf(mensajeServer,"%3d%3d\nDistancia: %d\n", auxX, auxY, distancia);
+			}
+			else
+				sprintf(mensajeServer,"No existe la PokeNest\n");
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			sprintf(mensajeServer,"Entrenador %c ha sido Bloqueado!\n", entrenador->id);
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			list_add(eReady, entrenador);
+			bloqueado = 1;
+			break;
+		/* MOVER AL ENTRENADOR */
+		case 'M':
+			moverEntrenador(entrenador, mensajeCliente[1]);
+			break;
+		/* CAPTURAR EL POKEMON */
+		case 'G':
+			if (entrenador->obj == mensajeCliente[1]) {
+				auxPos = getPokeNestFromID(mensajeCliente[1]);
+				if (pokeNestArray[auxPos] != NULL) {
+					distancia = distanciaObjetivo(entrenador, pokeNestArray);
+					if (!queue_is_empty(pokeNestArray[auxPos]->pokemons)) {
+						if(distancia == 0) {
+							list_add(entrenador->pokemons, queue_pop(pokeNestArray[auxPos]->pokemons));
+							restarRecurso(items, pokeNestArray[auxPos]->id);
+							sprintf(mensajeServer,"Pokemon %s Capturado!\n", pokeNestArray[auxPos]->nombre);
+							send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+							sprintf(mensajeServer,"Entrenador %c ha sido Bloqueado!\n", entrenador->id);
+							entrenador->obj = NULL;
+							list_add(eReady, entrenador);
+							bloqueado = 1;
+						}
+						else
+							sprintf(mensajeServer,"Aun se encuentra a %d de la PokeNest %s!\n", distancia, pokeNestArray[auxPos]->nombre);
+					}
+					else
+						sprintf(mensajeServer,"Lo siento se acabaron los %s. A cola de Bloqueados....\n", pokeNestArray[auxPos]->nombre);
+				}
+				else
+					sprintf(mensajeServer,"No existe la PokeNest!\n");
+			}
+			else
+				sprintf(mensajeServer,"Solicitar el objetivo primero!\n");
+			send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+			break;
+		/* OBTENER MEDALLA */
+		case 'O':
+			send(entrenador->socket, rutaMedalla, strlen(rutaMedalla), 0);
+			send(entrenador->socket, "\n", 1, 0);
+			break;
+		}
+		MoverPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
+		nivel_gui_dibujar(items, mapaMetadata->nombre);
+	}
+}
+/************************************************       HILO PLANIFICADOR        *******************************************************************/
+void *planificador() {
+	while (1) {
+		if (!list_is_empty(eReady)) {
+			if      ( !strncmp(mapaMetadata->algoritmo, "RR"  , 2) )
+				planRR();
+			else if ( !strncmp(mapaMetadata->algoritmo, "SRDF", 4) )
+				planSRDF();
+		}
+	}
 }
 /********************************************
 ************* FUNCION DE HILO ***************
@@ -196,9 +268,6 @@ void *handshake(void *socket) {
     entrenador->posy     = 1;
     entrenador->pokemons = list_create();
 
-    //Manda mensaje al entrenador
-    nivel_gui_dibujar(items, mapaMetadata->nombre);
-    write(0,"Nueva conexión!                         ",40);
     sprintf(mensajeServer,"\nBienvenido al Mapa %s!\n\nEmpieza el juego!\n\nIngrese Simbolo Personaje: ", mapaMetadata->nombre);
     send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
 
@@ -216,7 +285,16 @@ void *handshake(void *socket) {
     entrenador->id = mensajeCliente[0];
     CrearPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
+    printf("Bienvenido Entrenador %c           ", entrenador->id);
+    fflush(stdout);
     list_add(eReady, entrenador);
+
+	sprintf(mensajeServer,"\n\nBuena suerte %c!\n\nMR - Derecha\nML - Izquierda\nMU - Arriba\nMD - Abajo\n", entrenador->id);
+	send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+	sprintf(mensajeServer,"\nCX - Coordenadas PokeNest X\nGX - Obtener Pokemon X\nO - Ruta Medalla del Mapa\n\n\n");
+	send(entrenador->socket, mensajeServer, strlen(mensajeServer), 0);
+
+    return 0;
 }
 
 /***************************************************************************************************************************************************/
@@ -255,8 +333,8 @@ int main(int argc , char *argv[]) {
 	imprimirInfoPokeNest(pokeNestArray);
 
 	/* LISTAS DE ENTRENADORES */
-	eReady   = list_create();
-	eBlocked = list_create();
+	eReady   = list_create();  // Lista de Listos
+	eBlocked = list_create();  // Lista de Bloqueados
 /**************************************************   SECCION SOCKETS   ****************************************************************************/
 	int socketEscucha , socketCliente , *socketNuevo;
 	int addrlen;                                       // Tamaño de Bytes aceptados por accept
@@ -307,16 +385,17 @@ int main(int argc , char *argv[]) {
     write(0,"Esperando entrenadores...",25);
 
 /**************************************************   SECCION PLANIFICACION   **********************************************************************/
-	pthread_t planificador;
-	if ( !strncmp(mapaMetadata->algoritmo, "RR", 2) )
-		pthread_create( &planificador, NULL, planRR, NULL);
-	else if (!strncmp(mapaMetadata->algoritmo,"SRDF", 4))
-		pthread_create( &planificador, NULL, planSRDF, NULL);
+	pthread_t hiloPlanificador;
+	pthread_create( &hiloPlanificador, NULL, planificador, NULL);
 
 /***************************************************   SECCION CONEXIONES   ************************************************************************/
     addrlen = sizeof(struct sockaddr_in);
-    while( (socketCliente = accept(socketEscucha, (struct sockaddr *)&cliente, (socklen_t*)&addrlen)) ) {
-        pthread_t nuevoHilo;
+    while( (socketCliente = accept(socketEscucha, (struct sockaddr*)&cliente, (socklen_t*)&addrlen)) ) {
+        if (socketCliente == -1 ) {
+            perror("No se pudo Aceptar la conexión.");
+            break;
+        }
+    	pthread_t nuevoHilo;
         socketNuevo = malloc(1);
         *socketNuevo = socketCliente;
         if( pthread_create( &nuevoHilo, NULL, handshake, (void*) socketNuevo) ) {
@@ -324,13 +403,9 @@ int main(int argc , char *argv[]) {
             return EXIT_FAILURE;
         }
     }
-    nivel_gui_terminar();
-    if (socketCliente == -1 ) {
-        perror("No se pudo Aceptar la conexión.");
-        return EXIT_FAILURE;
-    }
 
 /**************************************************   SECCION CIERRES   ****************************************************************************/
+    nivel_gui_terminar();
     free(mapaMetadata);
     //free(pokeNestArray);
     free(pokemonMetadata);
