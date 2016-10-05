@@ -7,8 +7,8 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include "mapalib.h"
 #include "entrenador.h"
+#include <unistd.h>
 
 //VARIABLES GLOBALES
 int posX, posY;
@@ -50,34 +50,65 @@ int main ( int argc , char * argv []) {
 			}
 		printf("Entrenador conectado.\n");
 
+		int bRecibidos;
+		char* mensajeDelMapa=malloc(128);
+		bRecibidos = recv(entrenador, mensajeDelMapa, 128 ,0);
+		if(bRecibidos>0){
+			mensajeDelMapa[bRecibidos]='\0';
+			printf("%s", mensajeDelMapa);
+		}
 		/* Manda el simbolo al Mapa */
+		int i;
 		char mensajeMapa[3];
 		sprintf(mensajeMapa, "%c", configCoach->simbolo);
 		send(entrenador, mensajeMapa, 2, 0);
+		for(i=0; i<2; i++){
+			bRecibidos = recv(entrenador, mensajeDelMapa, 128, 0);
+			mensajeDelMapa[bRecibidos]='\0';
+			printf("%s", mensajeDelMapa);
+		}
+
+		free(mensajeDelMapa);
 
 		//INICIAR VIAJE
 		int estado=SOLICITA_POKENEST;
-		posX=posY=0;
-		int posPokNX=0;
-		int posPokNY=0;
+		posX=posY=1;
+		int posPokNX=1;
+		int posPokNY=1;
 
 		while(estado!=FINALIZO_MAPA){
 			int nroPok=0;
-			char* mensaje = malloc(128);
+			char* mensaje = malloc(20);
+			char* mensajeRecibido = malloc(128);
+			char auxX[3], auxY[3];
 			switch(estado){
 				case SOLICITA_POKENEST:
-					strcpy(mensaje, "C");
-					strcpy(mensaje+1, configCoach->objetivos[nroPok]);
-					send(entrenador, mensaje, 128, 0);
-					//RECIBIR MENSAJE CON LA POKENEST
+					sprintf(mensaje, "C%s", configCoach->objetivos[nroPok]);
+					send(entrenador, mensaje, 20, 0);
+					bRecibidos = recv(entrenador, mensajeRecibido, 24, 0);
+					//printf("%s", mensajeRecibido);
+					for(i=0; i<3; i++){
+						auxX[i]=mensajeRecibido[i];
+						auxY[i]=mensajeRecibido[i+3];
+					}
+					posPokNX=atoi(auxX);
+					posPokNY=atoi(auxY);
+					printf("Posicion X:%d, Posicion Y:%d", posPokNX, posPokNY);
 					estado=AVANZAR_POSICION;
+					//estado=FINALIZO_MAPA;
+					free(mensaje);
+					free(mensajeRecibido);
 					break;
 				case AVANZAR_POSICION:
+					sleep(1);
 					mensaje = avanzarPosicion(posPokNX, posPokNY);
 					if(strcmp(mensaje, "Ubicado en pokenest")==0)
 						estado=ATRAPAR_POKEMON;
 					else
-						send(entrenador, mensaje, 128, 0);
+						send(entrenador, mensaje, strlen(mensaje), 0);
+					break;
+				case ATRAPAR_POKEMON:
+					estado=FINALIZO_MAPA;
 					break;
 				}
 			}
@@ -130,10 +161,33 @@ void get_config(struct confCoach *configCoach, char *path){
 
 }
 
+tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex) {
+
+	printf("\nRuta PokeDex Cliente: \t%s\n", rutaPokeDex);
+	tMapaMetadata *mapaMetadata = malloc(sizeof(tMapaMetadata));
+	strcpy(mapaMetadata->nombre, nomMapa);
+	char ruta[256];
+	sprintf(ruta, "%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre);
+	printf("\nRuta Mapa:\n%s", ruta);
+
+
+	t_config *mapConfig = config_create(ruta);
+	if (mapConfig == NULL) return NULL; // En caso de error devuelvo NULL
+	strcpy(mapaMetadata->ip,        config_get_string_value(mapConfig, "IP"));
+	mapaMetadata->puerto          = config_get_int_value(mapConfig, "Puerto");
+	config_destroy(mapConfig);
+
+	printf("\nNombre del Mapa:                 %s", mapaMetadata->nombre);
+	printf("\nIP Mapa:                         %s", mapaMetadata->ip);
+	printf("\nPuerto:                          %d\n\n",mapaMetadata->puerto);
+
+	return mapaMetadata;
+}
+
 char* avanzarPosicion(int x, int y){
 	if(posX==x && posY==y)
 		return "Ubicado en pokenest";
-	if(posX==0 && posY==0){
+	if(posX==1 && posY==1){
 		if(x>posX)
 			return moverDerecha();
 		if(y>posY)
@@ -141,8 +195,8 @@ char* avanzarPosicion(int x, int y){
 	} //CASO DEL PRIMER MOVIMIENTO
 
 	if(posX!=x && posY!=y){
-		if(posX>x){
-			if(posY>y){
+		if(posX<x){
+			if(posY<y){
 				if(movAnt!='D')
 					return moverAbajo();
 				return moverDerecha();
@@ -151,7 +205,7 @@ char* avanzarPosicion(int x, int y){
 				return moverArriba();
 			return moverDerecha();
 		}
-		if(posY>y){
+		if(posY<y){
 			if(movAnt!='D')
 				return moverAbajo();
 			return moverIzquierda();
@@ -162,12 +216,12 @@ char* avanzarPosicion(int x, int y){
 	}
 
 	if(posX!=x){
-		if(posX>x)
+		if(posX<x)
 			return moverDerecha();
 		return moverIzquierda();
 	}
 
-	if(posY>y)
+	if(posY<y)
 		return moverAbajo();
 	return moverArriba();
 }

@@ -19,7 +19,15 @@ struct confCoach{
 	uint32_t reintentos;
 }confCoach;
 
+typedef struct {
+	char      nombre[30];
+	char      ip[30];
+	uint32_t  puerto;
+} tMapaMetadata;
+
 void get_config(struct confCoach *entrenadorMetadata, char *path);
+
+tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex);
 
 char* avanzarPosicion(int, int);
 
