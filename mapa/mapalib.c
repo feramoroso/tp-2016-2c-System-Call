@@ -69,37 +69,16 @@ tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *
 
 /** Recibe el nombre de la PokeNest, el numero de orden y la Ruta del **
  ** PokeNest y retorna una estructura con la metadata del Pokemon *****/
-tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, int ord, char *rutaPokeNest) {
+tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char *rutaPokeNest) {
 	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
 	t_config *pokemonConfig = config_create(string_from_format("%s/%s%03d.dat", rutaPokeNest, nomPokeNest, ord));
 	if (pokemonConfig == NULL) return NULL; //Chequeo Errores
-	pokemonMetadata->id = nomPokeNest[0];
+	pokemonMetadata->id    = id;
 	pokemonMetadata->nivel = config_get_int_value(pokemonConfig, "Nivel");
+	pokemonMetadata->ord   = ord;
 	config_destroy(pokemonConfig);
 	return pokemonMetadata;
 }
-/* Recibe el nombre del mapa, el nombre del Pokemon, su numero de orden y la Ruta del PokeDex
- *  y retorna una estructura con la metadata del Pokemon ***********************************/
-/*tPokemonMetadata *getPokemonMetadata(char *nomMapa, char * nomPokemon, int ord, char *rutaPokeDex) {
-
-	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
-	strcpy(pokemonMetadata->nombre, nomPokemon);
-
-	char ruta[256];
-	sprintf(ruta, "%s/Mapas/%s/PokeNests/%s/%s%03d.dat", rutaPokeDex, nomMapa, nomPokemon, nomPokemon, ord);
-	printf("\nRuta Pokemon:\n%s", ruta);
-
-	t_config *pokemonConfig = config_create(ruta);
-	if (pokemonConfig == NULL) return NULL; //Chequeo Errores
-	pokemonMetadata->nivel = config_get_int_value(pokemonConfig, "Nivel");
-	config_destroy(pokemonConfig);
-
-	printf("\nNombre del Pokemon: %s", nomPokemon);
-	printf("\nNivel Pokemon:      %d\n\n\n\n\n", pokemonMetadata->nivel);
-
-	return pokemonMetadata;
-}
-*/
 
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex) {
 	int i = 0;
@@ -130,7 +109,7 @@ int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *ru
 		char ruta[256];
 		sprintf(ruta, "%s/Mapas/%s/PokeNests/%s", rutaPokeDex, nomMapa, pokeNestArray[i]->nombre);
 		j = 1;
-		while ((pokemonMetadata = getPokemonMetadata(pokeNestArray[i]->nombre, j, ruta))) {
+		while ((pokemonMetadata = getPokemonMetadata(pokeNestArray[i]->nombre, pokeNestArray[i]->id, j, ruta))) {
 			queue_push(pokeNestArray[i]->pokemons, pokemonMetadata);
 			j++;
 		}
@@ -174,6 +153,15 @@ void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata 
 	}
 }
 
+void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
+	devolverPokemons(items, entrenador, pokeNestArray);
+	BorrarItem(items, entrenador->id);
+	printf("Entrenador %c Desconectado!                                 ", entrenador->id);
+	fflush(stdout);
+	close(entrenador->socket);
+	free(entrenador);
+}
+
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
 	int x, y, i = 0;
 	if (pokeNestArray[i] && entrenador->obj) {
@@ -205,4 +193,51 @@ void moverEntrenador(tEntrenador *entrenador, char eje) {
 		entrenador->posy--;
 		break;
 	}
+	send(entrenador->socket, "OK\n", 3, 0);
+}
+
+int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest) {
+	int pos = getPokeNestFromID(pokeNest);
+	char mensaje[128];
+	if (pokeNestArray[pos] != NULL) {
+		entrenador->obj = pokeNest;
+		sprintf(mensaje,"%3d%3d\nDistancia: %d\n", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy, distanciaObjetivo(entrenador, pokeNestArray));
+		send(entrenador->socket, mensaje, strlen(mensaje), 0);
+		return 1;
+	}
+	else {
+		sprintf(mensaje,"No existe la PokeNest\n");
+		send(entrenador->socket, mensaje, strlen(mensaje), 0);
+		return 0;
+	}
+}
+
+int entregarPokemon(t_list *eBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest) {
+	int pos, dis;
+	char mensaje[128];
+	if (entrenador->obj == pokeNest) {
+		pos = getPokeNestFromID(pokeNest);
+		if (pokeNestArray[pos]) {
+			dis = distanciaObjetivo(entrenador, pokeNestArray);
+			if (dis == 0) {
+					list_add(eBlocked, entrenador);
+					sprintf(mensaje,"Entrenador %c a cola de Bloqueados!\n", entrenador->id);
+					send(entrenador->socket, mensaje, strlen(mensaje), 0);
+					return 1;
+			}
+			else {
+				sprintf(mensaje,"Aun se encuentra a %d de la PokeNest %s!\n", dis, pokeNestArray[pos]->nombre);
+				send(entrenador->socket, mensaje, strlen(mensaje), 0);
+			}
+		}
+		else {
+			sprintf(mensaje,"No existe la PokeNest!\n");
+			send(entrenador->socket, mensaje, strlen(mensaje), 0);
+		}
+	}
+	else {
+		sprintf(mensaje,"Solicitar el objetivo primero!\n");
+		send(entrenador->socket, mensaje, strlen(mensaje), 0);
+	}
+	return 0;
 }
