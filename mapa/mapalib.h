@@ -17,19 +17,20 @@
 typedef struct {
 	char     *nombre;
 	char      medalla[256];    // Ruta del archivo de la medalla del Mapa
+	uint32_t  pokeNestCant;
 	uint32_t  tiempoDeadlock;
 	uint32_t  batalla;
-	char      algoritmo[10];
+	char     *algoritmo;
 	uint32_t  quantum;
 	uint32_t  retardo;
-	char      ip[30];
+	char     *ip;
 	uint32_t  puerto;
 } tMapaMetadata;
 
 /* Estructura para METADATA POKENEST */
 typedef struct {
-	char      nombre[30];
-	char      tipo[20];
+	char     *nombre;
+	char     *tipo;
 	char      id;
 	uint32_t  posx;
 	uint32_t  posy;
@@ -45,7 +46,6 @@ typedef struct {
 
 /* Estructura para ENTRENADOR */
 typedef struct {
-	uint32_t  threadID;
 	int       socket;
 	char      id;
 	char      obj;        // Proximo objetivo dentro del Mapa
@@ -69,4 +69,4 @@ void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMeta
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 void moverEntrenador(t_list *items, tEntrenador *entrenador, char eje, char *nomMapa);
 int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
-int entregarPokemon(t_list *eBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
+int entregarPokemon(t_list *eBlocked, pthread_mutex_t *mutexBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
