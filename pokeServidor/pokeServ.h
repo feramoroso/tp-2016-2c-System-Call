@@ -61,7 +61,9 @@ typedef union osada_file {
 
 typedef struct {
 	osada_header	header;
+	uint8_t			*bitmap;
 	osada_file 		file_table[MAX_FILES];
+	uint32_t		*fat_osada;
 	t_log			*log;
 }fs_osada_t;
 
