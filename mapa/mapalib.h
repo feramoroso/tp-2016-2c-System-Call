@@ -7,24 +7,30 @@
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
+/* PKMN BATTLE */
+#include <pkmn/battle.h>
+#include <pkmn/factory.h>
+
 #define PATH_LOG_MAP "../../pruebas/log_mapa.txt"
 
 /* Estructura para METADATA MAPA */
 typedef struct {
-	char      nombre[30];
+	char     *nombre;
+	char      medalla[256];    // Ruta del archivo de la medalla del Mapa
+	uint32_t  pokeNestCant;
 	uint32_t  tiempoDeadlock;
 	uint32_t  batalla;
-	char      algoritmo[10];
+	char     *algoritmo;
 	uint32_t  quantum;
 	uint32_t  retardo;
-	char      ip[30];
+	char     *ip;
 	uint32_t  puerto;
 } tMapaMetadata;
 
 /* Estructura para METADATA POKENEST */
 typedef struct {
-	char      nombre[30];
-	char      tipo[20];
+	char     *nombre;
+	char     *tipo;
 	char      id;
 	uint32_t  posx;
 	uint32_t  posy;
@@ -33,37 +39,34 @@ typedef struct {
 
 /* Estructura para METADATA POKEMON */
 typedef struct {
-	char      id;
-	uint32_t  nivel;
-	uint32_t  ord;
-	//char     *art;
+	char       id;
+	uint32_t   ord;
+	t_pokemon *data;
 } tPokemonMetadata;
 
 /* Estructura para ENTRENADOR */
 typedef struct {
-	uint32_t  threadID;
 	int       socket;
 	char      id;
+	char      obj;        // Proximo objetivo dentro del Mapa
 	time_t    time;
 	uint32_t  posx;
 	uint32_t  posy;
-	char      obj;        // Proximo objetivo dentro del Mapa
 	t_list   *pokemons;   // Lista de Pokemons ordenada por nivel
 } tEntrenador;
 
 
-tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex);
+int getMapaMetadata(tMapaMetadata *mapaMetadata, char *nomMapa, char *rutaPokeDex);
+void imprimirInfoMapa(tMapaMetadata *mapaMetadata);
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex);
 tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char *rutaPokeNest);
-//tPokeNestMetadata **getPokeNestArray(char *nomMapa, char *rutaPokeDex);
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
-
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
 void sumarRecurso(t_list* items, char id);
 void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
-void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
+void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char *nomMapa);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
-void moverEntrenador(tEntrenador *entrenador, char eje);
+void moverEntrenador(t_list *items, tEntrenador *entrenador, char eje, char *nomMapa);
 int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
-int entregarPokemon(t_list *eBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
+int entregarPokemon(t_list *eBlocked, pthread_mutex_t *mutexBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);

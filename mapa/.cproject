@@ -76,6 +76,7 @@
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.exe.release.935608896" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.exe.release">
 								<option id="gnu.c.link.option.libs.808393349" name="Libraries (-l)" superClass="gnu.c.link.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="pthread"/>
+									<listOptionValue builtIn="false" value="pkmn-battle"/>
 									<listOptionValue builtIn="false" value="nivel-gui"/>
 									<listOptionValue builtIn="false" value="ncurses"/>
 									<listOptionValue builtIn="false" value="commons"/>
