@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <dirent.h>
 
+/* HILOS  */
+#include <pthread.h>
+
 /* COMMONS */
 #include <commons/config.h>
 #include <commons/string.h>
@@ -25,9 +28,7 @@
 /* Recibe el nombre del Mapa y la Ruta del PokeDex y retorna una estructura con la metadata del mapa */
 int getMapaMetadata(tMapaMetadata *mapaMetadata, char *nomMapa, char *rutaPokeDex) {
 	//printf("\nRuta PokeDex Cliente: \t%s\n", rutaPokeDex);
-	char ruta[256];
-	sprintf(ruta, "%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre);
-	t_config *mapConfig = config_create(ruta);
+	t_config *mapConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre));
 	if (mapConfig == NULL) return EXIT_FAILURE; // En caso de error devuelvo NULL
 	//printf("\nRuta Mapa:\n%s", ruta);
 	mapaMetadata->tiempoDeadlock  = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
@@ -195,20 +196,23 @@ void moverEntrenador(t_list *items, tEntrenador *entrenador, char eje, char *nom
 	}
 	MoverPersonaje(items, entrenador->id, entrenador->posx, entrenador->posy);
 	nivel_gui_dibujar(items, nomMapa);
-	send(entrenador->socket, "OK\n", 3, 0);
+	send(entrenador->socket, "OK", 2, 0);
 }
 int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest) {
 	int pos = getPokeNestFromID(pokeNest);
-	char mensaje[128];
-	if (pokeNestArray[pos] != NULL) {
+//	char mensaje[128];
+	if (pokeNestArray[pos]) {
 		entrenador->obj = pokeNest;
-		sprintf(mensaje,"%3d%3d\nDistancia: %d\n", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy, distanciaObjetivo(entrenador, pokeNestArray));
-		send(entrenador->socket, mensaje, strlen(mensaje), 0);
+		send(entrenador->socket, string_from_format("%3d%3d", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy), 6, 0);
+		printf("Entrenador %c en busqueda de Pokemon %s.", entrenador->id, pokeNestArray[pos]->nombre);
+		fflush(stdout);
+//		sprintf(mensaje,"%3d%3d", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy);
+//		send(entrenador->socket, mensaje, strlen(mensaje), 0);
 		return 1;
 	}
 	else {
-		sprintf(mensaje,"No existe la PokeNest\n");
-		send(entrenador->socket, mensaje, strlen(mensaje), 0);
+//		sprintf(mensaje,"No existe la PokeNest\n");
+//		send(entrenador->socket, mensaje, strlen(mensaje), 0);
 		return 0;
 	}
 }
@@ -220,12 +224,12 @@ int entregarPokemon(t_list *eBlocked, pthread_mutex_t *mutexBlocked, tEntrenador
 		if (pokeNestArray[pos]) {
 			dis = distanciaObjetivo(entrenador, pokeNestArray);
 			if (dis == 0) {
-				//pthread_mutex_lock(mutexBlocked);
+				pthread_mutex_lock(mutexBlocked);
 				list_add(eBlocked, entrenador);
-				//pthread_mutex_unlock(mutexBlocked);
-				sprintf(mensaje,"Entrenador %c a cola de Bloqueados!\n", entrenador->id);
-				send(entrenador->socket, mensaje, strlen(mensaje), 0);
-				printf("Entrenador %c a solicitado Pokemon %s.", entrenador->id, pokeNestArray[pos]->nombre);
+				pthread_mutex_unlock(mutexBlocked);
+//				sprintf(mensaje, "OK", entrenador->id);
+//				send(entrenador->socket, mensaje, 2, 0);
+				printf("Entrenador %c ha solicitado Pokemon %s.", entrenador->id, pokeNestArray[pos]->nombre);
 				fflush(stdout);
 				return 1;
 			}

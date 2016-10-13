@@ -1,251 +1,355 @@
+/***************************************************************************************************************************************************/
+/************************************************         PROCESO MAPA         *********************************************************************/
+/***************************************************************************************************************************************************/
+
 #include <commons/config.h>
 #include <commons/string.h>
 #include <commons/log.h>
 #include <commons/collections/list.h>
+#include <commons/collections/queue.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include "entrenador.h"
 #include <unistd.h>
 
-//VARIABLES GLOBALES
-int posX, posY;
-char movAnt;
+/***************************************************************************************************************************************************/
+/************************************************         DEFINICIONES         *********************************************************************/
+/***************************************************************************************************************************************************/
 
-int main ( int argc , char * argv []) {
-	t_log *log = log_create(PATH_LOG_COACH , PROGRAM_COACH , true , 3);
+#define PATH_LOG     "log.txt"
+#define NOM_PROGRAMA "entrenador"
+#define TAM_MENSAJE  256
 
-	if (argc != 3) {
-		printf("Error en cantidad de parametros\n");
-		return EXIT_FAILURE;
+typedef struct {
+	char     id;
+	int  x;
+	int  y;
+} tObj;
+
+typedef struct {
+	int     socket;
+	char   *nombre;
+	char	id;
+	char   *dirBill;
+	char   *dirMedallas;
+	char    vidas;
+	char    vidasDisponibles;
+	char    reintentos;
+	char    deadlocks;
+	char    muertes;
+	time_t  time;
+	time_t  timeBlocked;
+	t_list *mapas;
+	uint32_t  x;
+	uint32_t  y;
+	tObj    obj;
+} tEntrenador;
+
+typedef struct {
+	char     *nombre;
+	char     *ip;
+	uint32_t  puerto;
+	t_list   *objetivos;
+} tMapa;
+
+/***************************************************************************************************************************************************/
+/************************************************      VARIABLES GLOBALES      *********************************************************************/
+/***************************************************************************************************************************************************/
+tEntrenador  *entrenador;        // Estructura con la Metadata del Entrenador
+char *rutaPokeDex;
+
+t_log *logger;
+
+/***************************************************************************************************************************************************/
+/************************************************         FUNCIONES            *********************************************************************/
+/***************************************************************************************************************************************************/
+tMapa *getMapa(char *nomMapa) {
+	tMapa *mapa = malloc(sizeof(tMapa));
+	mapa->nombre = strdup(nomMapa);
+//	printf("%s",mapa->nombre );
+	t_config *mapaConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapa->nombre));
+	if (mapaConfig == NULL) {
+		puts("No se encontro el mapa.");
+		exit(EXIT_FAILURE);
 	}
-		printf("Nombre del Entrenador: \t%s\n", argv[1]);
-		printf("Path Pokedex Cliente: \t%s\n\n", argv[2]);
-
-	char *path = calloc(1, strlen(argv[2])+strlen(COACH_METADAMA));
-	strncpy(path, argv[2],strlen(argv[2]));
-	strncpy(path + strlen(argv[2]), COACH_METADAMA ,strlen(COACH_METADAMA));
-	struct confCoach *configCoach = calloc(1,sizeof(struct confCoach));
-
-	//LEVANTA METADATA DEL ENTRENADOR
-	get_config(configCoach, path);
-
-	//LEVANTA LA METADATA DEL MAPA
-	tMapaMetadata *mapaMetadata = getMapaMetadata(configCoach->hojaDeViaje[0], argv[2]);
-
-	// CONECTARSE AL MAPA
-	/* Preparando la estructura */
-	struct sockaddr_in direccionMapa;
-	direccionMapa.sin_family = AF_INET;
-	direccionMapa.sin_port = htons(mapaMetadata->puerto);   // Puerto extraido del archivo metadata
-	inet_aton(mapaMetadata->ip, &(direccionMapa.sin_addr)); // IP extraida del archivo metadata
-	memset(&(direccionMapa.sin_zero), '\0', 8);             // Pongo en 0 el resto de la estructura
-
-		int entrenador = socket(AF_INET, SOCK_STREAM, 0);
-			if (connect(entrenador, (void*) &direccionMapa, sizeof(direccionMapa)) == -1) {
-				perror("No se pudo conectar");
-				return EXIT_FAILURE;
-			}
-		printf("Entrenador conectado.\n");
-
-		int bRecibidos;
-		char* mensajeDelMapa=malloc(128);
-		bRecibidos = recv(entrenador, mensajeDelMapa, 128 ,0);
-		if(bRecibidos>0){
-			mensajeDelMapa[bRecibidos]='\0';
-			printf("%s", mensajeDelMapa);
-		}
-		/* Manda el simbolo al Mapa */
-		int i;
-		char mensajeMapa[3];
-		sprintf(mensajeMapa, "%c", configCoach->simbolo);
-		send(entrenador, mensajeMapa, 2, 0);
-		for(i=0; i<2; i++){
-			bRecibidos = recv(entrenador, mensajeDelMapa, 128, 0);
-			mensajeDelMapa[bRecibidos]='\0';
-			printf("%s", mensajeDelMapa);
-		}
-
-		free(mensajeDelMapa);
-
-		//INICIAR VIAJE
-		int estado=SOLICITA_POKENEST;
-		posX=posY=1;
-		int posPokNX=1;
-		int posPokNY=1;
-
-		while(estado!=FINALIZO_MAPA){
-			int nroPok=0;
-			char* mensaje = malloc(20);
-			char* mensajeRecibido = malloc(128);
-			char auxX[3], auxY[3];
-			switch(estado){
-				case SOLICITA_POKENEST:
-					sprintf(mensaje, "C%s", configCoach->objetivos[nroPok]);
-					send(entrenador, mensaje, 20, 0);
-					bRecibidos = recv(entrenador, mensajeRecibido, 24, 0);
-					//printf("%s", mensajeRecibido);
-					for(i=0; i<3; i++){
-						auxX[i]=mensajeRecibido[i];
-						auxY[i]=mensajeRecibido[i+3];
-					}
-					posPokNX=atoi(auxX);
-					posPokNY=atoi(auxY);
-					printf("Posicion X:%d, Posicion Y:%d", posPokNX, posPokNY);
-					estado=AVANZAR_POSICION;
-					//estado=FINALIZO_MAPA;
-					free(mensaje);
-					free(mensajeRecibido);
-					break;
-				case AVANZAR_POSICION:
-					sleep(1);
-					mensaje = avanzarPosicion(posPokNX, posPokNY);
-					if(strcmp(mensaje, "Ubicado en pokenest")==0)
-						estado=ATRAPAR_POKEMON;
-					else
-						send(entrenador, mensaje, strlen(mensaje), 0);
-					break;
-				case ATRAPAR_POKEMON:
-					estado=FINALIZO_MAPA;
-					break;
-				}
-			}
-
-	free(configCoach);
-	log_destroy(log);
-	free(path);
-	return EXIT_SUCCESS;
+	mapa->ip     = strdup( config_get_string_value(mapaConfig, "IP") );
+	mapa->puerto = config_get_int_value(mapaConfig, "Puerto");
+	config_destroy(mapaConfig);
+	mapa->objetivos = list_create();
+	return mapa;
 }
 
-void get_config(struct confCoach *configCoach, char *path){
-	int i = 0;
-	int j = 0;
-	t_config *coachConfig = config_create(path);
-	configCoach->nombre = config_get_string_value(coachConfig, "nombre");
-	configCoach->simbolo = config_get_string_value(coachConfig, "simbolo")[0];
-
-	configCoach->nombre[strlen(configCoach->nombre)-1]='\0';
-	printf("\nNombre: %s [%c]",configCoach->nombre, configCoach->simbolo);
-
-	configCoach->hojaDeViaje = config_get_array_value(coachConfig, "hojaDeViaje");
-
-	while(configCoach->hojaDeViaje[i] != NULL){
-		if (configCoach->hojaDeViaje[i+1] == NULL){
-			configCoach->hojaDeViaje[i][strlen(configCoach->hojaDeViaje[i])-1]='\0';
+void getEntrenador(char *nomEntrenador) {
+	int i, j;
+	char **hojaDeViaje;
+	char **objetivos;
+	char  *objetivo;
+	tMapa *mapa;
+	entrenador = malloc(sizeof(tEntrenador));
+	entrenador->nombre      = nomEntrenador;
+	entrenador->dirBill     = string_from_format("%s/Entrenadores/%s/Dir de Bill/", rutaPokeDex, entrenador->nombre);
+	entrenador->dirMedallas = string_from_format("%s/Entrenadores/%s/medallas/"   , rutaPokeDex, entrenador->nombre);
+	t_config *entrenadorConfig = config_create(string_from_format("%s/Entrenadores/%s/metadata", rutaPokeDex, entrenador->nombre));
+	if (entrenadorConfig == NULL) {
+		puts("No se encontro el entrenador.");
+		exit(EXIT_FAILURE);
+	}
+	entrenador->id = config_get_string_value(entrenadorConfig, "simbolo")[0];
+	printf("\nNombre: %s [%c]", entrenador->nombre, entrenador->id);
+	hojaDeViaje = config_get_array_value(entrenadorConfig, "hojaDeViaje");
+	printf("\n\nHOJA DE VIAJE");
+	entrenador->mapas = list_create();
+	i = 0;
+	while( hojaDeViaje[i] ) {
+		mapa = getMapa(hojaDeViaje[i]);
+		printf("\n\nMapa [%d]: %s", i+1, mapa->nombre);
+		printf("\nIP         : %s", mapa->ip);
+		printf("\nPuerto     : %d", mapa->puerto);
+		printf("\nObjetivos  :");
+		objetivos = config_get_array_value(entrenadorConfig, string_from_format("obj[%s]", mapa->nombre));
+		j = 0;
+		while(objetivos[j]) {
+			objetivo = malloc(sizeof(objetivo));
+			*objetivo = objetivos[j][0];
+			printf(" %c", *objetivo);
+			list_add(mapa->objetivos, objetivo);
+			j++;
 		}
-		printf("\nHoja de Viaje[%d]: %s",i+1,configCoach->hojaDeViaje[i]);
+		list_add(entrenador->mapas, mapa);
 		i++;
 	}
-	for (j = 0 ; j<i; j++){
-		char *mapa = malloc(128);
-		strcpy(mapa, "obj[");
-		strcpy(mapa+4,configCoach->hojaDeViaje[j]);
-		strcpy(mapa+strlen(mapa), "]");
-		printf("\n%s:",mapa);
-		configCoach->objetivos = config_get_array_value(coachConfig, mapa);
-		int x = 0;
-		while(configCoach->objetivos[x]){
-			if (configCoach->objetivos[x+1] == NULL){
-				configCoach->objetivos[x][strlen(configCoach->objetivos[x])-1]='\0';
+	entrenador->vidas      = config_get_int_value(entrenadorConfig, "vidas");
+	entrenador->reintentos = config_get_int_value(entrenadorConfig, "reintentos");
+}
+
+void copiar(char *rutaOrigen, char *dirDestino) {
+	char   ch;
+	char  *archivoDestino;
+	char **aux;
+	FILE *source, *target;
+
+	aux = string_split(rutaOrigen, "/");
+	int i = 0;
+	while (aux[i])
+		i++;
+	archivoDestino = string_from_format("%s%s", dirDestino, aux[i-1]);
+
+	source = fopen(rutaOrigen,     "r");
+	target = fopen(archivoDestino, "w");
+	while( ( ch = fgetc(source) ) != EOF )
+		fputc(ch, target);
+	fclose(source);
+	fclose(target);
+}
+
+void pressEnter() {
+	printf("\n\nPresione enter para continuar...");
+	getchar();
+}
+
+void desconectarMapa() {
+	close(entrenador->socket);
+}
+
+void muerte() {
+	printf("\n\n\n\t\t\t************  MUERTE  ************");
+	printf(    "\n\t\t\t  %s has perdido una vida!"         , entrenador->nombre);
+	printf(    "\n\t\t\t*********************************");
+	entrenador->vidasDisponibles--;
+	desconectarMapa();
+}
+
+void maestroPokemon() {
+	printf("\n\n\n\t\t\t****************  FELICITACIONES  ****************");
+	printf("    \n\t\t\t  %s te has convertido en Maestro Pokemon!", entrenador->nombre);
+	printf("\n\n\n\t\t\t**************************************************");
+	entrenador->vidasDisponibles = 0;
+}
+
+void conectarMapa(tMapa *mapa) {
+	int bRecibidos;
+	char mensaje[TAM_MENSAJE];
+	struct sockaddr_in mapaDir;
+	mapaDir.sin_family = AF_INET;
+	mapaDir.sin_port = htons(mapa->puerto);    // Puerto extraido del archivo metadata
+	inet_aton(mapa->ip, &(mapaDir.sin_addr));  // IP extraida del archivo metadata
+	memset(&(mapaDir.sin_zero), '\0', 8);      // Pongo en 0 el resto de la estructura
+	entrenador->socket = socket(AF_INET, SOCK_STREAM, 0);
+	if ( connect(entrenador->socket, (void*) &mapaDir, sizeof(mapaDir)) == -1) {
+		perror("MAPA");
+		exit(EXIT_FAILURE);
+	}
+	printf("\n\nConexión Exitosa con %s!\n", mapa->nombre);
+	bRecibidos = recv(entrenador->socket, mensaje, TAM_MENSAJE ,0);
+	if( bRecibidos > 0) {
+		mensaje[bRecibidos] = '\0';
+		printf("%s", mensaje);
+	}
+	/* Manda el simbolo al Mapa */
+	send(entrenador->socket, string_from_format("%c", entrenador->id), 1, 0);
+	bRecibidos = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
+	bRecibidos = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
+}
+
+void irPosicionInicial() {
+	entrenador->x = 1;
+	entrenador->y = 1;
+}
+
+void obtenerCoordenadas() {
+	char coordenadas[6+1];  // en formato String XXXYYY
+	/* El protocolo indica solicitar CX siendo X el id de la PokeNest */
+	send(entrenador->socket, string_from_format("C%c", entrenador->obj.id), 2, 0);
+	/* Recibo las coordenadas en formato XXXYYY */
+	recv(entrenador->socket, coordenadas, 7, 0);
+	/* Transformo los tres primeros caracteres XXX en int */
+	entrenador->obj.x = atoi(string_substring(coordenadas, 0, 3));
+	/* Transformo los tres primeros caracteres YYY en int */
+	entrenador->obj.y = atoi(string_substring(coordenadas, 3, 3));
+	printf("\nCoordenadas de %c -  x: %d, y: %d\n\n", entrenador->obj.id, entrenador->obj.x, entrenador->obj.y);
+	fflush(stdout);
+}
+
+int irPosicionPokenest() {
+	char msj[2+1];
+	while ( (entrenador->x != entrenador->obj.x) || (entrenador->y != entrenador->obj.y) ) {
+		/*  Movimiento en X */
+		if (entrenador->x != entrenador->obj.x) {
+			if (entrenador->x < entrenador->obj.x) {
+				send(entrenador->socket, "MR", 2, 0);
+				entrenador->x++;
 			}
-			printf("%s - ",configCoach->objetivos[x]);
-			x++;
-		}
-		free(mapa);
-	}
-	configCoach->vidas = config_get_int_value(coachConfig, "vidas");
-	configCoach->reintentos = config_get_int_value(coachConfig, "reintentos");
-	printf("\nVidas: %d - Reintentos: %d\n\n",configCoach->vidas, configCoach->reintentos);
-
-}
-
-tMapaMetadata *getMapaMetadata(char *nomMapa, char *rutaPokeDex) {
-
-	printf("\nRuta PokeDex Cliente: \t%s\n", rutaPokeDex);
-	tMapaMetadata *mapaMetadata = malloc(sizeof(tMapaMetadata));
-	strcpy(mapaMetadata->nombre, nomMapa);
-	char ruta[256];
-	sprintf(ruta, "%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre);
-	printf("\nRuta Mapa:\n%s", ruta);
-
-
-	t_config *mapConfig = config_create(ruta);
-	if (mapConfig == NULL) return NULL; // En caso de error devuelvo NULL
-	strcpy(mapaMetadata->ip,        config_get_string_value(mapConfig, "IP"));
-	mapaMetadata->puerto          = config_get_int_value(mapConfig, "Puerto");
-	config_destroy(mapConfig);
-
-	printf("\nNombre del Mapa:                 %s", mapaMetadata->nombre);
-	printf("\nIP Mapa:                         %s", mapaMetadata->ip);
-	printf("\nPuerto:                          %d\n\n",mapaMetadata->puerto);
-
-	return mapaMetadata;
-}
-
-char* avanzarPosicion(int x, int y){
-	if(posX==x && posY==y)
-		return "Ubicado en pokenest";
-	if(posX==1 && posY==1){
-		if(x>posX)
-			return moverDerecha();
-		if(y>posY)
-			return moverAbajo();
-	} //CASO DEL PRIMER MOVIMIENTO
-
-	if(posX!=x && posY!=y){
-		if(posX<x){
-			if(posY<y){
-				if(movAnt!='D')
-					return moverAbajo();
-				return moverDerecha();
+			else {
+				send(entrenador->socket, "ML", 2, 0);
+				entrenador->x--;
 			}
-			if(movAnt!='U')
-				return moverArriba();
-			return moverDerecha();
+			recv(entrenador->socket, msj, 2, 0);
 		}
-		if(posY<y){
-			if(movAnt!='D')
-				return moverAbajo();
-			return moverIzquierda();
+		/*  Movimiento en Y */
+		if (entrenador->y != entrenador->obj.y) {
+			if (entrenador->y < entrenador->obj.y) {
+				send(entrenador->socket, "MD", 2, 0);
+				entrenador->y++;
+			}
+			else {
+				send(entrenador->socket, "MU", 2, 0);
+				entrenador->y--;
+			}
+			recv(entrenador->socket, msj, 2, 0);
 		}
-		if(movAnt!='U')
-			return moverArriba();
-		return moverIzquierda();
+	}
+	return 0;
+}
+
+int deadlock() {
+	char mensaje[256];
+	recv(entrenador->socket, mensaje, 256, 0);
+	while ( mensaje[0] != 'R' ){
+		if ( mensaje[0] != 'K' )
+			return 1;
+		printf("%s", mensaje);
+		recv(entrenador->socket, mensaje, 256, 0);
+	}
+	return 0;
+}
+
+int capturarPokemon() {
+	int bRecibidos;
+	char mensaje[256];
+	send(entrenador->socket, string_from_format("G%c", entrenador->obj.id), 2, 0);
+	printf("Capturando %c...\n", entrenador->obj.id);
+	bRecibidos = recv(entrenador->socket, mensaje, 256, 0);
+	mensaje[bRecibidos] = 0;
+	if ( mensaje[0] == 'D' )
+		if ( deadlock() )
+			return 1;
+	printf("%s", mensaje);
+	copiar(mensaje, entrenador->dirBill);
+	return 0;
+}
+
+int jugarObjetivo() {
+	printf("\nObjetivo: %c", entrenador->obj.id);
+	obtenerCoordenadas();
+//	pressEnter();
+	irPosicionPokenest();
+	if ( capturarPokemon() )
+		return 1;
+//	pressEnter();
+	return 0;
+}
+
+int jugarMapa(tMapa *mapa) {
+	printf("\nMapa en Juego : %s", mapa->nombre);
+	conectarMapa(mapa);
+	irPosicionInicial();
+	int objCumplidos = 0;
+	while( objCumplidos < list_size(mapa->objetivos) ) {
+		entrenador->obj.id = *(char*)list_get(mapa->objetivos, objCumplidos);
+		if( jugarObjetivo() )
+			return 1;
+		objCumplidos++;
+	}
+	desconectarMapa();
+	return 0;
+}
+
+int jugarVida() {
+	printf("\n\n\nVidas Disponibles : %d", entrenador->vidasDisponibles);
+	tMapa *mapa;
+	int mapasJugados = 0;
+	while( mapasJugados < list_size(entrenador->mapas) ) {
+		mapa = list_get(entrenador->mapas, mapasJugados);
+		if( jugarMapa(mapa) )
+			return 1;
+		mapasJugados++;
+	}
+	return 0;
+}
+
+/***************************************************************************************************************************************************/
+/************************************************             MAIN             *********************************************************************/
+/***************************************************************************************************************************************************/
+int main(int argc , char *argv[]) {
+	system("clear");
+	if (argc != 3) {
+		puts("Cantidad de parametros incorrecto!");
+		puts("Uso: entrenador <nombre_entrenador> <ruta PokeDex>");
+		return EXIT_FAILURE;
+	}
+/**************************************************   SECCION METADATA   ***************************************************************************/
+	/* OBTENER METADATA */
+	rutaPokeDex        = argv[2];
+	getEntrenador(argv[1]);
+
+	/* LOG */
+	logger = log_create("log.txt", entrenador->nombre, false, LOG_LEVEL_INFO);
+
+/**************************************************  SECCION PROGRAMA   ****************************************************************************/
+	char jugar = 's';
+	while( jugar == 's' || jugar == 'S') {
+		pressEnter();
+		system("clear");
+		printf("\n\n\n\t\t\t********* BIENVENIDO AL JUEGO *********");
+		printf("\nNumero de Reintentos : %d", entrenador->reintentos);
+		entrenador->vidasDisponibles = entrenador->vidas;
+		while(entrenador->vidasDisponibles) {
+			if( jugarVida() )
+				muerte();
+			else
+				maestroPokemon();
+		}
+//		printf("\nPresione enter para continuar...");
+		printf("\n\nIngrese S para reintentar... ");
+		jugar = getchar();
+		getchar();
+		if( jugar == 's' || jugar == 'S') entrenador->reintentos++;
 	}
 
-	if(posX!=x){
-		if(posX<x)
-			return moverDerecha();
-		return moverIzquierda();
-	}
-
-	if(posY<y)
-		return moverAbajo();
-	return moverArriba();
-}
-
-char* moverDerecha(){
-	++posX;
-	movAnt='R';
-	return "MR";
-}
-
-char* moverIzquierda(){
-	--posX;
-	movAnt='L';
-	return "ML";
-}
-
-char* moverArriba(){
-	--posY;
-	movAnt='U';
-	return "MU";
-}
-
-char* moverAbajo(){
-	++posY;
-	movAnt='D';
-	return "MD";
+	close(entrenador->socket);
+	free(entrenador);
+	log_destroy(logger);
+	return EXIT_SUCCESS;
 }

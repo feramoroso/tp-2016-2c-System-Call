@@ -16,7 +16,8 @@
 /* Estructura para METADATA MAPA */
 typedef struct {
 	char     *nombre;
-	char      medalla[256];    // Ruta del archivo de la medalla del Mapa
+	char     *medalla;    // Ruta del archivo de la medalla del Mapa
+//	char      medalla[256];    // Ruta del archivo de la medalla del Mapa
 	uint32_t  pokeNestCant;
 	uint32_t  tiempoDeadlock;
 	uint32_t  batalla;
