@@ -118,7 +118,7 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 		while (i<MAX_FILES){
 			if ( (0 == strcmp((char *)fs_tmp.file_table[i].fname, (char *)nombre_dir))
 					&& (fs_tmp.file_table[i].parent_directory == parent)
-					//&& (fs_tmp.file_table[i].state == DIRECTORY)
+					&& (fs_tmp.file_table[i].state != DELETED)
 				){
 				break;
 			}
@@ -150,7 +150,7 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 int is_parent(osada_file table[], char *path){
 	int i=0;
 	uint16_t parent;
-	log_info(fs_tmp.log, "       PARENT: %s", path);
+	//log_info(fs_tmp.log, "       PARENT: %s", path);
 	uint8_t *path2 = (uint8_t *)calloc(strlen(path) + 1, (size_t) 1);
     strcpy((char *)path2, path);
     int8_t *nombre_dir = (int8_t *)strrchr((char *)path2, '/');
@@ -161,7 +161,6 @@ int is_parent(osada_file table[], char *path){
     	while(i<MAX_FILES && 0 != strcmp((char *)table[i].fname, nombre_dir)){
     		i++;
 		}
-    	log_info(fs_tmp.log, "       Devuelve: %s - %d", path2, i);
     	return i;
 	}else{
 		parent = is_parent(table, path2);
@@ -171,7 +170,6 @@ int is_parent(osada_file table[], char *path){
 			while(i<MAX_FILES && (0 != strcmp((char *)table[i].fname, nombre_dir) ||
 					parent != table[i].parent_directory))
 				i++;
-			log_info(fs_tmp.log, "       Devuelve: %s - %d", nombre_dir, i);
 			return i;
 		}
 	}
@@ -554,7 +552,7 @@ int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 	memcpy(dirBlock, fs_tmp.fat_osada, (fs_tmp.header.data_blocks * 4));
 	msync(dirBlock, (fs_tmp.header.data_blocks * 4), MS_ASYNC);
 
-	//osada_open(path, fi);
+	osada_open(path, fi);
 	return 0;
 }
 
@@ -571,7 +569,7 @@ int osada_statfs(const char *path, struct statvfs *statvfs)
 int osada_write (const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
 	struct fuse_context* context = fuse_get_context();
-	log_info(fs_tmp.log, "OSADA write: %s-%d-%d", path, (int) size, (int)offset);
+	log_info(fs_tmp.log, "OSADA write: %s-size:%d-off:%d-buf:%d", path, (int) size, (int)offset, strlen(buf));
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
 	strcpy((char *)path2, path);
@@ -819,7 +817,7 @@ static struct fuse_operations osada_oper = {
 	.ftruncate = osada_ftruncate,
 	.mkdir     = osada_mkdir,
 	.rename    = osada_rename,
-	.statfs    = osada_statfs
+	//.statfs    = osada_statfs
 };
 
 
@@ -865,29 +863,6 @@ int main ( int argc , char * argv []) {
 
 	data_offset  =	fs_tmp.header.allocations_table_offset + fat_size_block;
 
-	/*
-	uint32_t freeB = free_bit_bitmap(fs_tmp.bitmap,
-			fs_tmp.header.bitmap_blocks * OSADA_BLOCK_SIZE);
-	printf("\n Bit libre: %08X", freeB);
-	int i;
-	for(i=0 ; i<MAX_FILES ; i++)
-		if (fs_tmp.file_table[i].first_block == freeB)
-			printf("\nPertenece al archivo: %s\n", fs_tmp.file_table[i].fname);
-
-	for (i=0 ; i < fs_tmp.header.data_blocks ; i++)
-		if (fs_tmp.fat_osada[i] == (freeB-data_offset))
-				printf("\nPertenece al archivo: %d\n", fs_tmp.fat_osada[i]);
-	i=0;
-
-	i=0;
-	while(fs_tmp.bitmap[i] == 0xFF){
-		i++;
-	}
-	printf("\nprimer libre en byte: %d - Valor: %X\n", i*8,fs_tmp.bitmap[i]*8);
-
-	show_bitmap(fs_tmp.bitmap, i, i+5);
-	printf("\nPrimer bloque libre: %d\n", free_bit_bitmap(fs_tmp.bitmap,
-			fs_tmp.header.bitmap_blocks*OSADA_BLOCK_SIZE) );*/
 
 	printf("\nInicia FUSE\n");
 	int ret=0;
