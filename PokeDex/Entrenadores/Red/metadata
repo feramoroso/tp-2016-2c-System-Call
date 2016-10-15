@@ -1,6 +1,8 @@
 nombre=Red
 simbolo=@
-hojaDeViaje=[PuebloPaleta
+hojaDeViaje=[PuebloPaleta,PuebloPaleta,PuebloPaleta
 obj[PuebloPaleta]=[K,B]
+obj[PuebloPaleta]=[B,K,P]
+obj[PuebloPaleta]=[B,K,P,Z]
 vidas=5
 reintentos=0

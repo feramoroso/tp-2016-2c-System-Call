@@ -68,6 +68,3 @@ void sumarRecurso(t_list* items, char id);
 void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
 void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char *nomMapa);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
-void moverEntrenador(t_list *items, tEntrenador *entrenador, char eje, char *nomMapa);
-int enviarCoordenadasEntrenador(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
-int entregarPokemon(t_list *eBlocked, pthread_mutex_t *mutexBlocked, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char pokeNest);
