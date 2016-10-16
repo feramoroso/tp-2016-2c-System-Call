@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <commons/log.h>
+#include <semaphore.h>
 
 #define OSADA_BLOCK_SIZE 64
 #define OSADA_FILENAME_LENGTH 17
@@ -65,6 +66,7 @@ typedef struct {
 	osada_file 		file_table[MAX_FILES];
 	uint32_t		*fat_osada;
 	t_log			*log;
+	sem_t			mux_osada;
 }fs_osada_t;
 
 
