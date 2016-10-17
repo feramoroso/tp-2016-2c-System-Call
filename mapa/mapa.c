@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <semaphore.h>
 
 /* SOCKETS */
 #include <sys/socket.h>
@@ -36,10 +37,13 @@
 #include <curses.h>
 #include "tad_items.h"
 
+/***************************************************************************************************************************************************/
+/************************************************         DEFINICIONES         *********************************************************************/
+/***************************************************************************************************************************************************/
 #define MAX_CON     10     // Conexiones máximas
 #define T_NOM_HOST  128    // Tamaño del nombre del Server
 #define TAM_MENSAJE 128    // Tamaño del mensaje Cliente/Servidor
-
+#define RUTA_LOG "mapa.log"
 /***************************************************************************************************************************************************/
 /************************************************      VARIABLES GLOBALES      *********************************************************************/
 /***************************************************************************************************************************************************/
@@ -49,13 +53,16 @@ tPokemonMetadata  *pokemonMetadata;     // Estructura con la Metadaata de los Po
 
 t_list  *eReady;                        // Lista de Entrenadores Listos
 t_list  *eBlocked;                      // Lista de Entrenadores Bloqueados
-t_list  *eDeadlock;                     // Lista de Entrenadores Bloqueados
+t_list  *eDeadlock;                     // Lista de Entrenadores en Deadlock
 t_list  *items;                         // Lista de elementos a graficar
 
 char *rutaPokeDex;                      // Ruta del PokeDex
 
 pthread_mutex_t mutexBlocked = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutexReady   = PTHREAD_MUTEX_INITIALIZER;
+
+sem_t semAsignador;                     // Semaforo PRODUCTOR/CONSUMIDOR para nuevos elementos Bloqueados
+sem_t semPlanificador;                  // Semaforo PRODUCTOR/CONSUMIDOR para nuevos elementos Ready
 
 t_log *logger;                          // Log
 
@@ -81,6 +88,29 @@ int getPokeNestFromID(char id) {
 		i++;
 	}
 	return i;
+}
+void devolverPokemons(tEntrenador *entrenador) {
+	tPokemonMetadata *pokemon;
+	while(!list_is_empty(entrenador->pokemons)) {
+		pokemon = list_remove(entrenador->pokemons, 0);
+		int i = 0;
+		while(pokeNestArray[i]->id != pokemon->id)
+			i++;
+		if(pokeNestArray[i] != NULL) {
+			queue_push(pokeNestArray[i]->pokemons, pokemon);
+			sumarRecurso(items, pokeNestArray[i]->id);
+		}
+	}
+}
+void desconectarEntrenador(tEntrenador *entrenador) {
+	devolverPokemons(entrenador);
+	BorrarItem(items, entrenador->id);
+	log_info(logger, "Entrenador %c Desconectado!", entrenador->id);
+	printf("Entrenador %c Desconectado!                                           ", entrenador->id);
+	fflush(stdout);
+	nivel_gui_dibujar(items, mapaMetadata->nombre);
+	close(entrenador->socket);
+	free(entrenador);
 }
 /************************************************    FUNCIONES ORDENADORAS     *********************************************************************/
 bool _menor_distancia(tEntrenador *entrenador, tEntrenador *entrenador_menor_distancia) {
@@ -126,6 +156,7 @@ void solicitarPokemon(tEntrenador *entrenador, char pokeNest) {
 	pthread_mutex_lock(&mutexBlocked);
 	list_add(eBlocked, entrenador);
 	pthread_mutex_unlock(&mutexBlocked);
+	sem_post(&semAsignador);
 	printf("Entrenador %c ha solicitado Pokemon %s.                     ", entrenador->id, pokeNestArray[pos]->nombre);
 	fflush(stdout);
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
@@ -146,10 +177,10 @@ void llenarEstructuras(int eMax, int pMax) {
 	tEntrenador *entrenador;
 	tPokemonMetadata *pokemon;
 	for(i = 0; i < eMax; i++) {
-		entrenador = (tEntrenador*)list_get(eBlocked, i);
+		entrenador = list_get(eBlocked, i);
 		matPedidos[i][getPokeNestFromID(entrenador->obj)] = 1;
 		for(j = 0; j < list_size(entrenador->pokemons); j++) {
-			pokemon = (tPokemonMetadata*)list_get(entrenador->pokemons, j);
+			pokemon = list_get(entrenador->pokemons, j);
 			k = 0;
 			while(pokeNestArray[k]->id != pokemon->id)
 				k++;
@@ -161,7 +192,7 @@ void llenarEstructuras(int eMax, int pMax) {
 }
 void imprimirEstructuras(int eMax, int pMax) {
     FILE *tablas;
-    tablas = fopen("log.txt","a");
+    tablas = fopen(RUTA_LOG, "a");
 	int i,j;
     fprintf(tablas, "\nEntrenador   -   Asignados   -   Pedidos   -   Disponibles");
 	for(i = 0; i < eMax; i++)
@@ -186,19 +217,19 @@ void imprimirEstructuras(int eMax, int pMax) {
 	fprintf(tablas, "\n\n");
 	fclose(tablas);
 }
-int  deadlockDetect(int eMax, int pMax) {
+int deadlockDetect(int eMax, int pMax) {
 	tEntrenador *entrenador;
 	int m[100], vecTemp[100],
-		found, flag,
-		i, j, k, l, sum;
+		found = 0, flag = 0,
+		i, j, k, l, suma;
 
 	k = 0;
 	for(i = 0; i < eMax; i++) {
-		sum = 0;
+		suma = 0;
 		for(j = 0; j < pMax; j++) {
-			sum += matAsignados[i][j];
+			suma += matAsignados[i][j];
 		}
-		if(sum == 0) {
+		if(suma == 0) {
 			m[k] = i;
 			k++;
 		}
@@ -254,11 +285,11 @@ void batallaPokemon() {
 
 		eA = list_remove(eDeadlock, 0);                             // Saco el primer entrenador de la Lista de Deadlock
 		list_sort(eA->pokemons, (void*)_mayor_nivel);               // Ordeno los pokemons por mayor nivel
-		pkA = (tPokemonMetadata*)list_get(eA->pokemons, 0);                            // Tomo al pokemon de mayor nivel
+		pkA = list_get(eA->pokemons, 0);                            // Tomo al pokemon de mayor nivel
 
 		eB = list_remove(eDeadlock, 0);                             // Saco el segundo entrenador de la Lista de Deadlock
 		list_sort(eB->pokemons, (void*)_mayor_nivel);               // Ordeno los pokemons por mayor nivel
-		pkB = (tPokemonMetadata*)list_get(eB->pokemons, 0);                            // Tomo al pokemon de mayor nivel
+		pkB = list_get(eB->pokemons, 0);                            // Tomo al pokemon de mayor nivel
 
 		sprintf(mensaje, "****  Batalla Pokemon! -  %c  Vs.  %c  ****", eA->id, eB->id);
 	    log_info(logger, "%s", mensaje);
@@ -266,32 +297,31 @@ void batallaPokemon() {
 	    pkLoser->data = pkmn_battle(pkA->data, pkB->data);          // Batalla!
 
 		if(pkLoser->data == pkB->data) {
-	    	/* Al entrenador lo vuelvo a ingresar a la lista de Deadlock para la proxima batalla */
+	    	/* Al entrenador lo vuelvo a ingresar a la lista de Deadlock en la primera posición para la proxima batalla */
 			sprintf(mensaje, "****   Ganador  %c  -  Perdedor  %c   ****", eA->id, eB->id);
-			list_add(eDeadlock, eB);
+			list_add_in_index(eDeadlock, 0, eB);
 	    	/* Le aviso a el entrenador ganador que zafo */
 	    	send(eA->socket, "R", 1, 0);
 
 		} else {
-			/* Al entrenador que perdio lo vuelvo a ingresar a la lista de Deadlock para la proxima batalla */
+			/* Al entrenador lo vuelvo a ingresar a la lista de Deadlock en la primera posición para la proxima batalla */
 			sprintf(mensaje, " ****   Ganador  %c  -  Perdedor  %c   ****\n", eB->id, eA->id);
-			list_add(eDeadlock, eA);
+			list_add_in_index(eDeadlock, 0, eA);
 	    	/* Le aviso a el entrenador ganador que zafo */
 	    	send(eB->socket, "R", 1, 0);
 		}
 	    log_info(logger, "%s", mensaje);
 	    if ( list_size(eDeadlock) == 1) {
-	    	eA = (tEntrenador*)list_remove(eDeadlock, 0);
+	    	eA = list_remove(eDeadlock, 0);
 	    	i = 0;
 	    	while(eA != (tEntrenador*)list_get(eBlocked, i))
 	    		i++;
 	    	/* Le aviso a el entrenador que perdio */
 	    	send(eA->socket, "K", 1, 0);
-
 	    	sprintf(mensaje, "Entrenador %c ha perdido la batala Pokemon!", eA->id);
 	    	log_info(logger, "%s", mensaje);
 	    	list_remove(eBlocked, i);
-	    	desconectarEntrenador(items, eA, pokeNestArray, mapaMetadata->nombre);
+	    	desconectarEntrenador(eA);
 	    }
 	}
 }
@@ -314,7 +344,7 @@ void *handshake(void *socket) {
 
     bRecibidos = recv(entrenador->socket, mensajeCliente, 1, 0);
     if (bRecibidos < 1) {
-		desconectarEntrenador(items, entrenador, pokeNestArray, mapaMetadata->nombre);
+		desconectarEntrenador(entrenador);
         return EXIT_SUCCESS;
     }
     entrenador->id = mensajeCliente[0];
@@ -322,9 +352,13 @@ void *handshake(void *socket) {
     printf("Bienvenido Entrenador %c                                    ", entrenador->id);
     fflush(stdout);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
-    list_add(eReady, entrenador);
+	pthread_mutex_lock(&mutexReady);
+	list_add(eReady, entrenador);
+	pthread_mutex_unlock(&mutexReady);
+	sem_post(&semPlanificador);
 	log_info(logger, "Entrenador %c Conectado!", entrenador->id);
 	log_info(logger, "Entrenador %c agregado a la cola de Listos.", entrenador->id);
+	return NULL;
 }
 /************************************************  HILO I/0 ASIGNACION DE PKS  *********************************************************************/
 void *asignador() {
@@ -333,13 +367,13 @@ void *asignador() {
 	int pos;
 	char mensaje[256];
 	while (1) {
+		sem_wait(&semAsignador);
 		pthread_mutex_lock(&mutexBlocked);
 		if (!list_is_empty(eBlocked)) {
-			entrenador = (tEntrenador*)list_remove(eBlocked, 0);
-			log_info(logger, "Entrenador %c en proceso de asignación.", entrenador->id);
+			entrenador = list_remove(eBlocked, 0);
 			pos = getPokeNestFromID(entrenador->obj);
 			if(!queue_is_empty(pokeNestArray[pos]->pokemons)) {
-				pokemon = (tPokemonMetadata*)queue_pop(pokeNestArray[pos]->pokemons);
+				pokemon = queue_pop(pokeNestArray[pos]->pokemons);
 				list_add(entrenador->pokemons, pokemon);
 				restarRecurso(items, pokemon->id);
 				sprintf(mensaje,"%s/Mapas/%s/PokeNests/%s/%s%03d.dat", rutaPokeDex, mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
@@ -348,6 +382,7 @@ void *asignador() {
 				pthread_mutex_lock(&mutexReady);
 				list_add(eReady, entrenador);
 				pthread_mutex_unlock(&mutexReady);
+				sem_post(&semPlanificador);
 				log_info(logger, "Pokemon %s capturado por entrenador %c!", pokeNestArray[pos]->nombre, entrenador->id);
 				log_info(logger, "Entrenador %c agregado a la cola de Listos.", entrenador->id);
 			    printf("Pokemon %s capturado por entrenador %c!                     ", pokeNestArray[pos]->nombre, entrenador->id);
@@ -355,12 +390,11 @@ void *asignador() {
 				nivel_gui_dibujar(items, mapaMetadata->nombre);
 			}
 			else {
-				log_info(logger, "No hay mas %s, Entrenador %c agregado a la cola de Bloqueados.", pokeNestArray[pos]->nombre, entrenador->id);
 				list_add(eBlocked, entrenador);
+				sem_post(&semAsignador);
 			}
 		}
 		pthread_mutex_unlock(&mutexBlocked);
-		sleep(1);
 	}
 }
 /************************************************   PLANIFICADOR ROUND ROBIN   *********************************************************************/
@@ -368,14 +402,14 @@ void planRR() {
     int bRecibidos;
 	int ql = mapaMetadata->quantum;          // Quantum restante
     char mensajeCliente[TAM_MENSAJE];
-    tEntrenador *entrenador = (tEntrenador*)list_remove(eReady, 0);
+    tEntrenador *entrenador = list_remove(eReady, 0);
 	log_info(logger, "Entrenador %c en ejecución.", entrenador->id);
 	while (ql) {
 		ql--;
 		usleep( mapaMetadata->retardo * 1000 );
 		bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
 	    if (bRecibidos < 1) {
-			desconectarEntrenador(items, entrenador, pokeNestArray, mapaMetadata->nombre);
+			desconectarEntrenador(entrenador);
 	        return;
 	    }
 		switch (mensajeCliente[0]) {
@@ -395,11 +429,14 @@ void planRR() {
 		/* OBTENER MEDALLA */
 		case 'O':
 			send(entrenador->socket, mapaMetadata->medalla, strlen(mapaMetadata->medalla), 0);
-			desconectarEntrenador(items, entrenador, pokeNestArray, mapaMetadata->nombre);
+			desconectarEntrenador(entrenador);
 			return;
 		}
 	}
+	pthread_mutex_lock(&mutexReady);
 	list_add(eReady, entrenador);
+	pthread_mutex_unlock(&mutexReady);
+	sem_post(&semPlanificador);
     log_info(logger, "Entrenador %c agregado a la cola de Listos.", entrenador->id);
 }
 /************************************************      PLANIFICADOR SRDF       *********************************************************************/
@@ -407,15 +444,15 @@ void planSRDF() {
 	int bRecibidos;
     char mensajeCliente[TAM_MENSAJE];
     pthread_mutex_lock(&mutexReady);
-    list_sort(eReady, (void*)_menor_distancia);                      // Ordeno la lista por menor distancia
-    tEntrenador *entrenador = (tEntrenador*)list_remove(eReady, 0);  // Saco al primero
+    list_sort(eReady, (void*)_menor_distancia);         // Ordeno la lista por menor distancia
+    tEntrenador *entrenador = list_remove(eReady, 0);   // Saco al primero
     pthread_mutex_unlock(&mutexReady);
     log_info(logger, "Entrenador %c en ejecución.", entrenador->id);
 	while (1) {
 		usleep( mapaMetadata->retardo * 1000 );
 		bRecibidos = recv(entrenador->socket, mensajeCliente, TAM_MENSAJE, 0);
 	    if (bRecibidos < 1) {
-			desconectarEntrenador(items, entrenador, pokeNestArray, mapaMetadata->nombre);
+			desconectarEntrenador(entrenador);
 	        return;
 	    }
 		switch (mensajeCliente[0]) {
@@ -426,6 +463,7 @@ void planSRDF() {
 			pthread_mutex_lock(&mutexReady);
 			list_add(eReady, entrenador);
 			pthread_mutex_unlock(&mutexReady);
+			sem_post(&semPlanificador);
 			return;
 			break;
 		/* MOVER AL ENTRENADOR */
@@ -440,7 +478,7 @@ void planSRDF() {
 		/* OBTENER MEDALLA */
 		case 'O':
 			send(entrenador->socket, mapaMetadata->medalla, strlen(mapaMetadata->medalla), 0);
-			desconectarEntrenador(items, entrenador, pokeNestArray, mapaMetadata->nombre);
+			desconectarEntrenador(entrenador);
 			return;
 		}
 	}
@@ -448,6 +486,7 @@ void planSRDF() {
 /************************************************      HILO PLANIFICADOR       *********************************************************************/
 void *planificador() {
 	while (1) {
+		sem_wait(&semPlanificador);
 		if (!list_is_empty(eReady)) {
 		    if      ( !strncmp(mapaMetadata->algoritmo, "RR"  , 2) )
 				planRR();
@@ -517,9 +556,11 @@ int main(int argc , char *argv[]) {
 
 	pthread_mutex_init(&mutexBlocked, NULL);
 	pthread_mutex_init(&mutexReady,   NULL);
+	sem_init(&semAsignador   , 0, 0);
+	sem_init(&semPlanificador, 0, 0);
 
 	/* LOG */
-	logger = log_create("log.txt", mapaMetadata->nombre, false, LOG_LEVEL_INFO);
+	logger = log_create(RUTA_LOG, mapaMetadata->nombre, false, LOG_LEVEL_INFO);
 
 /**************************************************   SECCION SEÑALES   ****************************************************************************/
 	signal(SIGUSR2, obtenerMapaMetadata);
@@ -575,7 +616,7 @@ int main(int argc , char *argv[]) {
     }
     nivel_gui_inicializar();
     nivel_gui_dibujar(items, mapaMetadata->nombre);
-    printf("Esperando entrenadores...                                   ");
+    printf("Esperando entrenadores...");
 	fflush(stdout);
     nivel_gui_dibujar(items, mapaMetadata->nombre);
 
@@ -606,15 +647,15 @@ int main(int argc , char *argv[]) {
 /**************************************************   SECCION CIERRES   ****************************************************************************/
     nivel_gui_terminar();
     free(mapaMetadata);
-    //free(pokeNestArray);
     free(pokemonMetadata);
 	log_destroy(logger);
 
 	list_destroy(eReady);
 	list_destroy(eBlocked);
 	list_destroy(eDeadlock);
-
 	pthread_mutex_destroy(&mutexBlocked);
 	pthread_mutex_destroy(&mutexReady);
+	sem_destroy(&semAsignador);
+	sem_destroy(&semPlanificador);
     return EXIT_SUCCESS;
 }

@@ -1,17 +1,12 @@
 #include <stdint.h>
 
 /* COMMONS */
-#include <commons/config.h>
-#include <commons/string.h>
-#include <commons/log.h>
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
 /* PKMN BATTLE */
 #include <pkmn/battle.h>
 #include <pkmn/factory.h>
-
-#define PATH_LOG_MAP "../../pruebas/log_mapa.txt"
 
 /* Estructura para METADATA MAPA */
 typedef struct {
@@ -64,7 +59,4 @@ tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char 
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
-void sumarRecurso(t_list* items, char id);
-void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);
-void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char *nomMapa);
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);

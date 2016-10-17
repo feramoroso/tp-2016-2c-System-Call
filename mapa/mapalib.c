@@ -135,33 +135,6 @@ void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]) {
 		i++;
 	}
 }
-void sumarRecurso(t_list* items, char id) {
-	((ITEM_NIVEL*)(_search_item_by_id(items, id)))->quantity++;
-	/*ITEM_NIVEL* item = _search_item_by_id(items, id);
-    item->quantity = item->quantity + 1;*/
-}
-void devolverPokemons(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
-	tPokemonMetadata *pokemon;
-	while(!list_is_empty(entrenador->pokemons)) {
-		pokemon = (tPokemonMetadata*)list_remove(entrenador->pokemons, 0);
-		int i = 0;
-		while(pokeNestArray[i]->id != pokemon->id)
-			i++;
-		if(pokeNestArray[i] != NULL) {
-			queue_push(pokeNestArray[i]->pokemons, pokemon);
-			sumarRecurso(items, pokeNestArray[i]->id);
-		}
-	}
-}
-void desconectarEntrenador(t_list *items, tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[], char *nomMapa) {
-	devolverPokemons(items, entrenador, pokeNestArray);
-	BorrarItem(items, entrenador->id);
-	printf("Entrenador %c Desconectado!                                           ", entrenador->id);
-	fflush(stdout);
-	nivel_gui_dibujar(items, nomMapa);
-	close(entrenador->socket);
-	free(entrenador);
-}
 int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
 	int x, y, i = 0;
 	if (pokeNestArray[i] && entrenador->obj) {
