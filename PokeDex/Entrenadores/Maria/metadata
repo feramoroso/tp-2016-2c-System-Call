@@ -1,6 +1,6 @@
 nombre=Maria
 simbolo=$
-hojaDeViaje=[PuebloPaleta
+hojaDeViaje=[PuebloPaleta]
 obj[PuebloPaleta]=[B,K]
-vidas=5
+vidas=3
 reintentos=0

@@ -12,7 +12,6 @@
 typedef struct {
 	char     *nombre;
 	char     *medalla;    // Ruta del archivo de la medalla del Mapa
-//	char      medalla[256];    // Ruta del archivo de la medalla del Mapa
 	uint32_t  pokeNestCant;
 	uint32_t  tiempoDeadlock;
 	uint32_t  batalla;
@@ -59,4 +58,3 @@ tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char 
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 int getPokemonsQueue(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
 void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]);
-int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]);

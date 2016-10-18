@@ -1,6 +1,6 @@
-nombre=Red
-simbolo=@
+nombre=Max
+simbolo=&
 hojaDeViaje=[PuebloPaleta]
-obj[PuebloPaleta]=[K,B]
+obj[PuebloPaleta]=[P,Z]
 vidas=5
 reintentos=0

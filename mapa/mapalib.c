@@ -5,23 +5,15 @@
 #include <dirent.h>
 #include <unistd.h>
 
-/* HILOS  */
-#include <pthread.h>
-
 /* COMMONS */
 #include <commons/config.h>
 #include <commons/string.h>
-#include <commons/log.h>
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
 /* PKMN BATTLE */
 #include <pkmn/battle.h>
 #include <pkmn/factory.h>
-
-/* Librerias del graficador */
-#include <curses.h>
-#include "tad_items.h"
 
 /* Libreria con funciones del Mapa */
 #include "mapalib.h"
@@ -134,19 +126,4 @@ void imprimirInfoPokeNest(tPokeNestMetadata *pokeNestArray[]) {
 		}
 		i++;
 	}
-}
-int distanciaObjetivo(tEntrenador *entrenador, tPokeNestMetadata *pokeNestArray[]) {
-	int x, y, i = 0;
-	if (pokeNestArray[i] && entrenador->obj) {
-		while(pokeNestArray[i]->id != entrenador->obj)
-			i++;
-		if(pokeNestArray[i] != NULL) {
-			x = abs(pokeNestArray[i]->posx - entrenador->posx);
-			y = abs(pokeNestArray[i]->posy - entrenador->posy);
-			return x + y;
-		}
-		else
-			return -2; // Objetivo no encontrado o PokeNest Vacia
-	}
-	return -1; // Objetivo no establecido o PokeNest Vacia
 }
