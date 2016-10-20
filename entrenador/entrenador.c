@@ -20,9 +20,9 @@
 #define TAM_MENSAJE  256
 
 typedef struct {
-	char     id;
-	int  x;
-	int  y;
+	char  id;
+	int    x;
+	int    y;
 } tObj;
 
 typedef struct {
@@ -36,12 +36,12 @@ typedef struct {
 	char    reintentos;
 	char    deadlocks;
 	char    muertes;
+	int     x;
+	int     y;
+	tObj    obj;
 	time_t  time;
 	time_t  timeBlocked;
 	t_list *mapas;
-	uint32_t  x;
-	uint32_t  y;
-	tObj    obj;
 } tEntrenador;
 
 typedef struct {
@@ -167,20 +167,10 @@ void borrar() {
 }
 char getCaracter(char *msj) {
 	char c;
-//	struct termios oldt, newt;
-	printf("%s", msj);
-/*	fflush(stdout);
-	tcgetattr (STDIN_FILENO, &oldt);
-	newt = oldt;
-	newt.c_lflag &= ~( ICANON | ECHO );
-	newt.c_cc[VTIME] = 0;
-	newt.c_cc[VMIN] = 1;
-	tcsetattr (STDIN_FILENO, TCSANOW, &newt);
-	fseek(stdin, 0, SEEK_END);
-	fflush(stdin);*/
-	c = getchar();
-//	puts(&c);
-//	tcsetattr (STDIN_FILENO, TCSANOW, &oldt);
+	puts(msj);
+	tcflush(STDIN_FILENO, TCIFLUSH);
+	c = getc(stdin);
+	tcflush(STDIN_FILENO, TCIFLUSH);
 	return c;
 }
 void desconectarMapa() {
@@ -268,7 +258,7 @@ void obtenerCoordenadas() {
 	entrenador->obj.x = atoi(string_substring(coordenadas, 0, 3));
 	/* Transformo los tres primeros caracteres YYY en int */
 	entrenador->obj.y = atoi(string_substring(coordenadas, 3, 3));
-	printf("\nCoordenadas de %c -  x: %d, y: %d\n", entrenador->obj.id, entrenador->obj.x, entrenador->obj.y);
+	printf("\nCoordenadas de %c    x: %d  y: %d\n", entrenador->obj.id, entrenador->obj.x, entrenador->obj.y);
 	fflush(stdout);
 }
 int irPosicionPokenest() {
@@ -305,12 +295,14 @@ int deadlock() {
 	int nB;
 	char mensaje[256];
 	entrenador->deadlocks++;
-	nB = recv(entrenador->socket, mensaje, 1, 0);
-	mensaje[nB] = '\0';
-	printf("\n%d", nB);
-	printf("\n%s\n\n", mensaje);
-	if ( mensaje[0] == 'K' )
-			return 1;
+	while (mensaje[0] != 'R' ) {
+		nB = recv(entrenador->socket, mensaje, 1, 0);
+		mensaje[nB] = '\0';
+		printf("\n%d", nB);
+		printf("\n%s\n\n", mensaje);
+		if ( mensaje[0] == 'K' )
+				return 1;
+	}
 	return 0;
 }
 int capturarPokemon() {
@@ -332,8 +324,6 @@ int capturarPokemon() {
 		printf("\n%d", nB);
 		printf("\n%s\n\n", mensaje);
 	}
-//	printf("%s", mensaje);
-//	fflush(stdout);
 	sprintf(aux, "cp %s \"%s\"", mensaje, entrenador->dirBill);
 	system(aux);
 //	copiar(mensaje, entrenador->dirBill);
@@ -401,9 +391,18 @@ int main(int argc , char *argv[]) {
 	signal(SIGUSR1, signalRutina);
 	signal(SIGTERM, signalRutina);
 /**************************************************  SECCION PROGRAMA   ****************************************************************************/
+	/******** MODIFICACION CONSOLA ********/
+	struct termios oldt, newt;
+	tcgetattr(STDIN_FILENO, &oldt);
+	newt = oldt;
+	newt.c_lflag &= ~( ICANON | ECHO );
+	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+	system("setterm -cursor off");
+	setbuf(stdin, NULL);
+	/**************************************/
 	getCaracter("\n\nPresione una tecla para continuar...");
-	char jugar = 's';
-	while( jugar == 's' || jugar == 'S') {
+	char jugar = 'r';
+	while( jugar == 'r' || jugar == 'R') {
 		system("clear");
 		printf("\n\t\t\t**********  BIENVENIDO AL JUEGO %s  **********", entrenador->nombre);
 		printf("\n\nNumero de Reintentos : %d", entrenador->reintentos);
@@ -422,9 +421,13 @@ int main(int argc , char *argv[]) {
 			borrar();
 			sinVidas();
 		}
-		jugar = getCaracter("\n\nIngrese S para reintentar...\n");
+		jugar = getCaracter("\n\nPresione R para reintentar, cualquier otra tecla para salir...");
 		entrenador->reintentos++;
 	}
 	free(entrenador);
+	/******** RESTAURACION CONSOLA ********/
+	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	/**************************************/
+	system("setterm -cursor on");
 	return EXIT_SUCCESS;
 }

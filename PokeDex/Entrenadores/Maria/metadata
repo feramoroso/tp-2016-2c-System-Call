@@ -1,6 +1,7 @@
 nombre=Maria
 simbolo=$
-hojaDeViaje=[PuebloPaleta]
-obj[PuebloPaleta]=[B,K]
+hojaDeViaje=[PuebloPaleta,CiudadPlateada]
+obj[PuebloPaleta]=[B,K,Z]
+obj[CiudadPlateada]=[P,W,B,W]
 vidas=3
 reintentos=0

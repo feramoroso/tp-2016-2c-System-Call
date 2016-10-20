@@ -21,8 +21,6 @@
 #include <commons/config.h>
 #include <commons/string.h>
 #include <commons/log.h>
-#include <commons/process.h>
-#include <commons/error.h>
 #include <commons/collections/list.h>
 #include <commons/collections/queue.h>
 
@@ -66,18 +64,38 @@ sem_t semPlanificador;                  // Semaforo PRODUCTOR/CONSUMIDOR para nu
 
 t_log *logger;                          // Log
 
-char matPedidos[100][100];              // Matriz de Recursos Solicitados por los entrenadores bloqueados
-char matAsignados[100][100];            // Matriz de Recursos Asignados a los entrenadores bloqueados
-char vecDisponibles[100];               // Vector de Recursos Disponibles
+char matPedidos      [100][100];        // Matriz de Recursos Solicitados por los entrenadores bloqueados
+char matAsignados    [100][100];        // Matriz de Recursos Asignados a los entrenadores bloqueados
+char vecDisponibles  [100];             // Vector de Recursos Disponibles
 
 /***************************************************************************************************************************************************/
 /************************************************         FUNCIONES            *********************************************************************/
 /***************************************************************************************************************************************************/
-void obtenerMapaMetadata() {
-	if ( getMapaMetadata(mapaMetadata, mapaMetadata->nombre, rutaPokeDex) ) {
+void getMapaMetadata() {
+	t_config *mapConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre));
+	if (mapConfig == NULL) {
 		puts("No se encontro el mapa.");
 		exit(EXIT_FAILURE);
 	}
+	mapaMetadata->tiempoDeadlock  = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
+	mapaMetadata->batalla         = config_get_int_value(mapConfig, "Batalla");
+	mapaMetadata->algoritmo       = strdup( config_get_string_value(mapConfig, "algoritmo") );
+	mapaMetadata->quantum         = config_get_int_value(mapConfig, "quantum");
+	mapaMetadata->retardo         = config_get_int_value(mapConfig, "retardo");
+	mapaMetadata->ip              = strdup( config_get_string_value(mapConfig, "IP") );
+	mapaMetadata->puerto          = config_get_int_value(mapConfig, "Puerto");
+	config_destroy(mapConfig);
+}
+void imprimirInfoMapa() {
+	printf("\nNombre del Mapa:                 %s", mapaMetadata->nombre);
+	printf("\nRuta de la Medalla               %s", mapaMetadata->medalla);
+	printf("\nTiempo de chequeo DeadLock (ms): %d", mapaMetadata->tiempoDeadlock);
+	printf("\nBatalla:                         %d", mapaMetadata->batalla);
+	printf("\nAlgoritmo:                       %s", mapaMetadata->algoritmo);
+	printf("\nQuantum:                         %d", mapaMetadata->quantum);
+	printf("\nRetardo entre Quantums (ms):     %d", mapaMetadata->retardo);
+	printf("\nIP Mapa:                         %s", mapaMetadata->ip);
+	printf("\nPuerto:                          %d\n\n",mapaMetadata->puerto);
 }
 /* Obtiene la posicion de la PokeNest id en el pokeNestArray */
 int getPokeNestFromID(char id) {
@@ -111,6 +129,12 @@ void desconectarEntrenador(tEntrenador *entrenador) {
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	close(entrenador->socket);
 	free(entrenador);
+}
+int pokeNestArraySize() {
+	int i = 0;
+	while (pokeNestArray[i])
+	i++;
+	return i;
 }
 /************************************************   FUNCIONES PLANIFICADOR     *********************************************************************/
 void agregarReady(tEntrenador *entrenador) {
@@ -226,24 +250,17 @@ void imprimirEstructuras(int eMax, int pMax) {
     tablas = fopen(RUTA_LOG, "a");
 	int i,j;
     fprintf(tablas, "\nEntrenador   -   Asignados   -   Pedidos   -   Disponibles");
-	for(i = 0; i < eMax; i++)
-	{
-	fprintf(tablas, "\n    %c            ", ((tEntrenador*)list_get(eBlocked, i))->id);
+	for(i = 0; i < eMax; i++) {
+		fprintf(tablas, "\n    %c            ", ((tEntrenador*)list_get(eBlocked, i))->id);
 		for(j=0;j<pMax;j++)
-		{
 			fprintf(tablas, "%d ", matAsignados[i][j]);
-		}
 		fprintf(tablas, "          ");
 		for(j=0;j<pMax;j++)
-		{
 			fprintf(tablas, "%d ", matPedidos[i][j]);
-		}
 		fprintf(tablas, "        ");
 		if(i==0)
-		{
 			for(j=0;j<pMax;j++)
 				fprintf(tablas, "%d ", vecDisponibles[j]);
-		}
 	}
 	fprintf(tablas, "\n\n");
 	fclose(tablas);
@@ -257,9 +274,8 @@ int deadlockDetect(int eMax, int pMax) {
 	k = 0;
 	for(i = 0; i < eMax; i++) {
 		suma = 0;
-		for(j = 0; j < pMax; j++) {
+		for(j = 0; j < pMax; j++)
 			suma += matAsignados[i][j];
-		}
 		if(suma == 0) {
 			m[k] = i;
 			k++;
@@ -286,18 +302,22 @@ int deadlockDetect(int eMax, int pMax) {
 	/* Procesos en Deadlock */
 	for(i = 0; i < eMax; i++) {
 		found = 0;
-		for(j = 0; j < k; j++) {
+		for(j = 0; j < k; j++)
 			if(i == m[j])
 				found = 1;
-		}
 		if(found == 0) {
-			entrenador = list_get(eBlocked, i);
 			/* Le aviso al entrenador que esta en Deadlock */
+			entrenador = list_get(eBlocked, i);
 			send(entrenador->socket, "D", 1, 0);
-			list_add(eDeadlock, entrenador);
+			/* Si esta activado el modo batalla agrego a los entrenadores en la lista Deadlock */
+			if ( mapaMetadata->batalla ) {
+				list_add(eDeadlock, entrenador);
+				log_info(logger, "Entrenador %c agregado a la cola de Deadlock.", entrenador->id);
+			}
 		}
 	}
 	if(!found) {
+		/* Si se detecta Deadlock imprimo tablas y logueo */
 		log_warning(logger, "Interbloqueo Detectado!");
 		imprimirEstructuras(eMax, pMax);
 		return 1;
@@ -336,6 +356,8 @@ void batallaPokemon() {
     	/* Le aviso a el entrenador ganador que zafo */
     	send(eWinner->socket, "R", 1, 0);
 	    log_info(logger, "****    Ganador  %c  -  Perdedor  %c    ****", eWinner->id, eLoser->id);
+
+	    /* Si solo queda el perderdor lo mato, lo remuevo de la lista de bloqueados y lo desconecto */
 	    if ( list_size(eDeadlock) == 1) {
 	    	eLoser = list_remove(eDeadlock, 0);
 	    	i = 0;
@@ -352,10 +374,8 @@ void batallaPokemon() {
 }
 /************************************************        HILO DEADLOCK         *********************************************************************/
 void *deadlock() {
-	int i = 0, eMax, pMax;
-	while (pokeNestArray[i])
-		i++;
-	pMax = i;
+	int eMax, pMax;
+	pMax = pokeNestArraySize();
 	while(1) {
 		usleep( mapaMetadata->tiempoDeadlock * 1000 );
 		pthread_mutex_lock(&mutexBlocked);
@@ -375,6 +395,7 @@ void *asignador() {
 	int pos;
 	char mensaje[TAM_MENSAJE];
 	while (1) {
+		usleep( mapaMetadata->retardo * 1000 );
 		sem_wait(&semAsignador);
 		pthread_mutex_lock(&mutexBlocked);
 		if (!list_is_empty(eBlocked)) {
@@ -388,11 +409,11 @@ void *asignador() {
 				sprintf(mensaje,"%s/Mapas/%s/PokeNests/%s/%s%03d.dat", rutaPokeDex, mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
 				send(entrenador->socket, mensaje, strlen(mensaje), 0);
 				log_info(logger, "Pokemon %s capturado por entrenador %c!", pokeNestArray[pos]->nombre, entrenador->id);
-				entrenador->obj = 0;
-				agregarReady(entrenador);
 				printf("Pokemon %s capturado por entrenador %c!                     ", pokeNestArray[pos]->nombre, entrenador->id);
 				fflush(stdout);
 				nivel_gui_dibujar(items, mapaMetadata->nombre);
+				entrenador->obj = 0;
+				agregarReady(entrenador);
 			}
 			else {
 				list_add(eBlocked, entrenador);
@@ -453,7 +474,6 @@ void planSRDF() {
     	}
     	i++;
     }
-//    list_sort(eReady, (void*)_menor_distancia);         // Ordeno la lista por menor distancia
     entrenador = list_remove(eReady, idx);   // Saco al de menor distancia
     pthread_mutex_unlock(&mutexReady);
     log_info(logger, "Entrenador %c en ejecución.", entrenador->id);
@@ -531,6 +551,7 @@ void *handshake(void *socket) {
 /***************************************************************************************************************************************************/
 int main(int argc , char *argv[]) {
 	system("clear");
+	system("setterm -cursor off");
 	if (argc != 3) {
 		puts("Cantidad de parametros incorrecto!");
 		puts("Uso: mapa <nombre_mapa> <ruta PokeDex>");
@@ -541,7 +562,7 @@ int main(int argc , char *argv[]) {
 	mapaMetadata         = malloc(sizeof(tMapaMetadata));
 	mapaMetadata->nombre = argv[1];
 	rutaPokeDex          = argv[2];
-	obtenerMapaMetadata();
+	getMapaMetadata();
 
 	/* OBTENER LA RUTA DE LA MEDALLA */
 	mapaMetadata->medalla = string_from_format("%s/Mapas/%s/medalla-%s.jpg", rutaPokeDex, mapaMetadata->nombre, mapaMetadata->nombre);
@@ -575,7 +596,7 @@ int main(int argc , char *argv[]) {
 	logger = log_create(RUTA_LOG, mapaMetadata->nombre, false, LOG_LEVEL_INFO);
 
 /**************************************************   SECCION SEÑALES   ****************************************************************************/
-	signal(SIGUSR2, obtenerMapaMetadata);
+	signal(SIGUSR2, getMapaMetadata);
 
 /**************************************************   SECCION SOCKETS   ****************************************************************************/
 	int socketEscucha, socketCliente;
@@ -672,5 +693,6 @@ int main(int argc , char *argv[]) {
 	pthread_mutex_destroy(&mutexReady);
 	sem_destroy(&semAsignador);
 	sem_destroy(&semPlanificador);
-    return EXIT_SUCCESS;
+	system("setterm -cursor on");
+	return EXIT_SUCCESS;
 }

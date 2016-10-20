@@ -18,35 +18,6 @@
 /* Libreria con funciones del Mapa */
 #include "mapalib.h"
 
-/* Recibe el nombre del Mapa y la Ruta del PokeDex y retorna una estructura con la metadata del mapa */
-int getMapaMetadata(tMapaMetadata *mapaMetadata, char *nomMapa, char *rutaPokeDex) {
-	//printf("\nRuta PokeDex Cliente: \t%s\n", rutaPokeDex);
-	t_config *mapConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapaMetadata->nombre));
-	if (mapConfig == NULL) return EXIT_FAILURE; // En caso de error devuelvo NULL
-	//printf("\nRuta Mapa:\n%s", ruta);
-	mapaMetadata->tiempoDeadlock  = config_get_int_value(mapConfig, "TiempoChequeoDeadlock");
-	mapaMetadata->batalla         = config_get_int_value(mapConfig, "Batalla");
-	mapaMetadata->algoritmo       = strdup( config_get_string_value(mapConfig, "algoritmo") );
-	mapaMetadata->quantum         = config_get_int_value(mapConfig, "quantum");
-	mapaMetadata->retardo         = config_get_int_value(mapConfig, "retardo");
-	mapaMetadata->ip              = strdup( config_get_string_value(mapConfig, "IP") );
-	mapaMetadata->puerto          = config_get_int_value(mapConfig, "Puerto");
-	config_destroy(mapConfig);
-	return EXIT_SUCCESS;
-}
-void imprimirInfoMapa(tMapaMetadata *mapaMetadata) {
-	printf("\nNombre del Mapa:                 %s", mapaMetadata->nombre);
-	printf("\nRuta de la Medalla               %s", mapaMetadata->medalla);
-	printf("\nTiempo de chequeo DeadLock (ms): %d", mapaMetadata->tiempoDeadlock);
-	printf("\nBatalla:                         %d", mapaMetadata->batalla);
-	printf("\nAlgoritmo:                       %s", mapaMetadata->algoritmo);
-	printf("\nQuantum:                         %d", mapaMetadata->quantum);
-	printf("\nRetardo entre Quantums (ms):     %d", mapaMetadata->retardo);
-	printf("\nIP Mapa:                         %s", mapaMetadata->ip);
-	printf("\nPuerto:                          %d\n\n",mapaMetadata->puerto);
-}
-/* Recibe el nombre del mapa, el nombre del PokeNest y la Ruta del PokeDex
- *  y retorna una estructura con la metadata del  */
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex) {
 	tPokeNestMetadata *pokeNestMetadata = malloc(sizeof(tPokeNestMetadata));
 	pokeNestMetadata->nombre = strdup( nomPokeNest );
@@ -59,8 +30,6 @@ tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *
 	config_destroy(pokeNestConfig);
 	return pokeNestMetadata;
 }
-/** Recibe el nombre de la PokeNest, el numero de orden y la Ruta del **
- ** PokeNest y retorna una estructura con la metadata del Pokemon *****/
 tPokemonMetadata *getPokemonMetadata(char *nomPokeNest, char id, int ord, char *rutaPokeNest) {
 	t_pkmn_factory* pokemon_factory = create_pkmn_factory();
 	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));

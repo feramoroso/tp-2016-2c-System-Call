@@ -50,9 +50,6 @@ typedef struct {
 	t_list   *pokemons;   // Lista de Pokemons ordenada por nivel
 } tEntrenador;
 
-
-int getMapaMetadata(tMapaMetadata *mapaMetadata, char *nomMapa, char *rutaPokeDex);
-void imprimirInfoMapa(tMapaMetadata *mapaMetadata);
 tPokeNestMetadata *getPokeNestMetadata(char *nomMapa, char * nomPokeNest, char *rutaPokeDex);
 tPokemonMetadata *getPokemonMetadata(char * nomPokeNest, char id, int ord, char *rutaPokeNest);
 int getPokeNestArray(tPokeNestMetadata *pokeNestArray[], char *nomMapa, char *rutaPokeDex);
