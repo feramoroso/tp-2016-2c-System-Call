@@ -314,7 +314,7 @@ int capturarPokemon() {
 	mensaje[nB] = '\0';
 	printf("\n%d", nB);
 	printf("\n%s\n\n", mensaje);
-	if ( mensaje[0] == 'D' ) {
+	while ( mensaje[0] == 'D' ) {
 		printf("\n\t\t**********  %s estas en DEADLOCK!  *********\n", entrenador->nombre);
 		if ( deadlock() )
 			return 1;
