@@ -33,6 +33,7 @@
 									<listOptionValue builtIn="false" value="FUSE_USE_VERSION=27"/>
 									<listOptionValue builtIn="false" value="_FILE_OFFSET_BITS=64"/>
 								</option>
+								<option id="gnu.c.compiler.option.include.files.423968532" name="Include files (-include)" superClass="gnu.c.compiler.option.include.files" valueType="includeFiles"/>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.2040001738" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.exe.debug.2145058511" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.exe.debug">

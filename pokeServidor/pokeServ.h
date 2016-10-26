@@ -1,16 +1,10 @@
-/*
- * pokeServ.h
- *
- *  Created on: 15/9/2016
- *      Author: utnso
- */
-
 #ifndef POKESERV_H_
 #define POKESERV_H_
 
 #include <stdint.h>
 #include <commons/log.h>
 #include <semaphore.h>
+#include "socks_fs.h"
 
 #define OSADA_BLOCK_SIZE 64
 #define OSADA_FILENAME_LENGTH 17
@@ -19,8 +13,6 @@
 typedef unsigned char osada_block[OSADA_BLOCK_SIZE];
 typedef uint32_t osada_block_pointer;
 
-// set __attribute__((packed)) for this whole section
-// See http://stackoverflow.com/a/11772340/641451
 #pragma pack(push, 1)
 
 typedef union osada_header {
@@ -36,15 +28,11 @@ typedef union osada_header {
 	};
 } osada_header;
 
-//_Static_assert( sizeof(osada_header) == sizeof(osada_block), "osada_header size does not match osada_block size");
-
 typedef enum __attribute__((packed)) {
     DELETED = '\0',
     REGULAR = '\1',
     DIRECTORY = '\2',
 } osada_file_state;
-
-//_Static_assert( sizeof(osada_file_state) == 1, "osada_file_state is not a char type");
 
 typedef union osada_file {
     uint8_t buffer[32];              // Offset   Longitud
@@ -58,8 +46,6 @@ typedef union osada_file {
 	};
 } osada_file;
 
-//_Static_assert( sizeof(osada_file) == (sizeof(osada_block) / 2.0), "osada_file size does not half osada_block size");
-
 typedef struct {
 	osada_header	header;
 	uint8_t			*bitmap;
@@ -69,8 +55,20 @@ typedef struct {
 	sem_t			mux_osada;
 }fs_osada_t;
 
+typedef struct _lista_pokeCli{
+	osada_socket sock;
+	sem_t semaforo;
+	struct _lista_pokeCli *sgte;
+} __attribute__ ((packed)) lista_pokeCli;
 
 #pragma pack(pop)
 
+int is_parent(osada_file table[], int8_t *path);
+int32_t free_bit_bitmap(uint8_t *bitmap, uint32_t size);
+//uint32_t free_blocks(uint8_t *bitmap);
+uint32_t bit_bitmap(uint8_t *bitmap, uint32_t pos);
+int set_bitmap(uint8_t *bitmap, uint32_t pos);
+int clean_bitmap(uint8_t *bitmap, uint32_t pos);
+void liberar_cliente_caido(osada_socket sock);
 
-#endif /* POKESERV_H_ */
+#endif
