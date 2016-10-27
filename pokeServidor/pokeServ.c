@@ -1,4 +1,4 @@
-
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -22,7 +22,7 @@ void * pokedex, *dirBlock;
 uint32_t data_offset;
 int32_t dirPokedex;
 
-
+void *procesar_cliente(void *socket);
 
 
 /*
@@ -41,10 +41,11 @@ uint32_t free_blocks(uint8_t *bitmap){
 /*
  * osada_read: Funcion FUSE
  */
-static int osada_read(const char *path, char *buf, size_t size, off_t offset,
-		struct fuse_file_info *fi)
+static int osada_read(const char *path, uint32_t size, uint32_t offset,
+		uint32_t fh, osada_socket sock)
 {
-	//log_info(fs_tmp.log, "OSADA read: %s-%d-%d", path, (int)offset, (int)size);
+	log_info(fs_tmp.log, "OSADA read: %s-%d-%d", path, (int)offset, (int)size);
+	printf("  READ: %s\n",path);
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
 	strcpy((char *)path2, path);
@@ -52,34 +53,45 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,
 	nombre_dir[0] = '\0';
 	nombre_dir++;
 
-	if (strcmp((char *)fs_tmp.file_table[fi->fh].fname, (char *)nombre_dir) != 0)
+	if (strcmp((char *)fs_tmp.file_table[fh].fname, (char *)nombre_dir) != 0)
 		return -EINVAL;
 
 	if (size == 0) return 0;
 
-	if( fs_tmp.file_table[fi->fh].file_size < (offset+size) ){
-		size = fs_tmp.file_table[fi->fh].file_size - offset;
+	if( fs_tmp.file_table[fh].file_size < (offset+size) ){
+		size = fs_tmp.file_table[fh].file_size - offset;
 	}
 
-	uint32_t block_start = fs_tmp.file_table[fi->fh].first_block;
+	osada_packet mensaje;
+	uint32_t block_start = fs_tmp.file_table[fh].first_block;
 	div_t block_offset = div(offset, OSADA_BLOCK_SIZE);
 	uint32_t i =0;
 	for ( i=0 ; i< block_offset.quot ; i++ ){
 		block_start = fs_tmp.fat_osada[block_start];
 	}
-	int32_t copied=0, size_to_copy=0;
+	int32_t copied=0, size_to_copy=0, copiedMSG=0;
 	dirBlock = pokedex + (data_offset + block_start) * OSADA_BLOCK_SIZE + block_offset.rem;
 
 	size_to_copy = (OSADA_BLOCK_SIZE - block_offset.rem);
 	if (size < size_to_copy) size_to_copy = size;
-	memcpy(buf, dirBlock , size_to_copy);
+	memcpy(mensaje.path, dirBlock , size_to_copy);
+	printf("mensaje: %s\n", mensaje.path);
 	copied += size_to_copy;
 	i=0;
 	while (copied < size ){
 		i += 1;
+		if (i%4 ==0){
+			// ENVIAR DATOS
+			mensaje.type = OP_READ;
+			mensaje.len = 290;
+			mensaje.size = 1;//Mas datos
+			mensaje.cod_return = copiedMSG;
+			send_socket(&mensaje, sock);
+			copiedMSG = 0;
+		}
 		if (block_start == 0xFFFFFFFF ) {
-			//log_error(fs_tmp.log, "--- QUILOMBO ---%d",i);
-			return copied;
+			//return copied;
+			break;
 		}
 		block_start = fs_tmp.fat_osada[block_start];
 		if ((size - copied) < OSADA_BLOCK_SIZE)
@@ -88,31 +100,37 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,
 			size_to_copy = OSADA_BLOCK_SIZE;
 
 		dirBlock = pokedex + (data_offset + block_start) * OSADA_BLOCK_SIZE;
-		////log_info(fs_tmp.log, "Paso 6");
-		memcpy(buf + copied, dirBlock , size_to_copy);
-		////log_info(fs_tmp.log, "Paso 7");
+		memcpy(mensaje.path + copiedMSG, dirBlock , size_to_copy);
+		printf("mensaje: %s\n", mensaje.path);
 		copied = copied + size_to_copy;
+		copiedMSG = copiedMSG + size_to_copy;
 	}
+	if (i==0){
+		mensaje.type = OP_READ;
+		mensaje.len = 290;
+		mensaje.size = 0;//NO mas datos
+		mensaje.cod_return = copied;
+		send_socket(&mensaje, sock);
+	}
+	else
+		if(copiedMSG != 0){
+			mensaje.type = OP_READ;
+			mensaje.len = 290;
+			mensaje.size = 0;//NO mas datos
+			mensaje.cod_return = copiedMSG;
+			send_socket(&mensaje, sock);
+		}
 	return copied;
 }
 
 static int osada_getattr(osada_packet *mensaje)
-{ //IN:	 path		OUT: COD, size, lastmod, REGULAR o DIRECTORY
-	printf("    GETATTR %s\n", mensaje->path);
+{
+	printf("  GETATTR %s\n", mensaje->path);
 	log_info(fs_tmp.log, "Pedido GETATTR: %s", mensaje->path);
 
-/* Esto lo dejo en el Cliente que usa FUSE
-	if(memcmp(path, "/", 2) == 0) {
-		stbuf->st_mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
-		stbuf->st_nlink = 2;
-		stbuf->st_uid = context->uid;
-		stbuf->st_gid = context->gid;
-		return 0;
-	}
-*/
 	int i=0, pos, parent = 0xFFFF;
-	int8_t *path2 = calloc(strlen(mensaje->path) + 1, 1);
-	strcpy((char *)path2, mensaje->path);
+	int8_t *path2 = calloc(strlen((char *)mensaje->path) + 1, 1);
+	strcpy((char *)path2, (char *)mensaje->path);
 	int8_t *nombre_dir = (int8_t *)strrchr((char *)path2, '/');
 	nombre_dir[0] = '\0';
 	nombre_dir++;
@@ -195,11 +213,9 @@ int is_parent(osada_file table[], int8_t *path){
 	}
 }
 
-static int osada_readdir(osada_packet mens, osada_socket *sock) {
-
-	struct fuse_context* context = fuse_get_context();
-
-	printf("    READDIR %s\n", mens.path);
+static int osada_readdir(osada_packet mens, osada_socket sock)
+{
+	printf("  READDIR %s\n", mens.path);
 	log_info(fs_tmp.log, "Pedido READDIR: %s", mens.path);
 
 	int i=0, pos=0, parent = 0xFFFF;
@@ -251,7 +267,7 @@ static int osada_readdir(osada_packet mens, osada_socket *sock) {
 	while (i<MAX_FILES){
 		if (fs_tmp.file_table[i].parent_directory == pos && fs_tmp.file_table[i].state != DELETED){
 			files[cant] = i;
-			printf("    File[%d]: %s", i, fs_tmp.file_table[i].fname);
+			//printf("    File[%d]: %s", i, fs_tmp.file_table[i].fname);
 			cant ++;
 		}
 		i++;
@@ -266,7 +282,6 @@ static int osada_readdir(osada_packet mens, osada_socket *sock) {
 		mensaje.lastmod = fs_tmp.file_table[files[i]].lastmod;
 		strcpy((char *)mensaje.fname, (char *)fs_tmp.file_table[files[i]].fname);
 		mensaje.file_state = fs_tmp.file_table[files[i]].state;
-		printf("    Envio: %s\n", mensaje.fname);
 		send_socket(&mensaje, sock);
 	}
 	if (cant == 0){
@@ -274,7 +289,6 @@ static int osada_readdir(osada_packet mens, osada_socket *sock) {
 		mensaje.len = 13;
 		mensaje.cod_return = 0;
 		mensaje.offset = 0;
-		printf("    Envio sin Archivos\n");
 		send_socket(&mensaje, sock);
 	}
 
@@ -283,10 +297,10 @@ static int osada_readdir(osada_packet mens, osada_socket *sock) {
 	return 0;
 }
 
-int osada_mkdir (const char *path, mode_t mode)
+int osada_mkdir (const char *path)
 {
-	//log_info(fs_tmp.log, "OSADA mkdir: %s", path);
-
+	log_info(fs_tmp.log, "OSADA mkdir: %s", path);
+	printf("  MKDIR %s\n", path);
 	int i=0, libre, parent = 0xFFFF;
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
@@ -310,13 +324,14 @@ int osada_mkdir (const char *path, mode_t mode)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			//printf("\t No existe la ruta indicada.\n");
-			return -EFAULT;
+			free(path2);
+			return -ENOENT;
 		}
 	}
 /*
  * Fina validacion
  */
-	sem_wait(&fs_tmp.mux_osada);
+	//sem_wait(&fs_tmp.mux_osada);
 	// Busco posicion libre en la Tabla de Archivos
 	while (i<MAX_FILES){
 		if (fs_tmp.file_table[i].state == DELETED){
@@ -327,7 +342,8 @@ int osada_mkdir (const char *path, mode_t mode)
 	}
 	if (i == MAX_FILES){
 		//log_error(fs_tmp.log, "No Hay espacio disponible en la Tabla de Archivos");
-		sem_post(&fs_tmp.mux_osada);
+		//sem_post(&fs_tmp.mux_osada);
+		free(path2);
 		return -ENOSPC;
 	}
 	// Valido que no se repita el nombre
@@ -337,7 +353,7 @@ int osada_mkdir (const char *path, mode_t mode)
 				(fs_tmp.file_table[i].parent_directory == parent) &&
 					(fs_tmp.file_table[i].state == DIRECTORY)){
 			//log_error(fs_tmp.log, "Ya existe una carpeta con el nombre \"%s\" en \"%s\".\n",nombre_arch, path2);
-			sem_post(&fs_tmp.mux_osada);
+			//sem_post(&fs_tmp.mux_osada);
 			return -1;
 		}
 		i++;
@@ -354,13 +370,14 @@ int osada_mkdir (const char *path, mode_t mode)
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	sem_post(&fs_tmp.mux_osada);
+	//sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
 int osada_rmdir (const char *path)
 {
-	//log_info(fs_tmp.log, "OSADA rmdir: %s", path);
+	log_info(fs_tmp.log, "OSADA rmdir: %s", path);
+	printf("  RMDIR %s\n", path);
 	int i=0, pos, parent = 0xFFFF;
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
@@ -379,8 +396,8 @@ int osada_rmdir (const char *path)
 		//log_info(fs_tmp.log, "Sub-carpeta");
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
-			//log_error(fs_tmp.log, "No existe la ruta indicada");
-			return -EFAULT;
+			printf("No existe la ruta indicada");
+			return -ENOENT;
 		}
 	}
 
@@ -395,7 +412,7 @@ int osada_rmdir (const char *path)
 		i++;
 	}
 	if ( i == MAX_FILES){
-		//log_error(fs_tmp.log, "No existe la carpeta a eliminar");
+		printf("No existe la carpeta a eliminar");
 		return -ENOENT;
 	}
 	pos = i;
@@ -406,12 +423,12 @@ int osada_rmdir (const char *path)
 	i=0;
 	while (i<MAX_FILES){
 		if (fs_tmp.file_table[i].parent_directory == pos && fs_tmp.file_table[i].state != DELETED){
-			//log_error(fs_tmp.log, "La carpeta no esta vacia %d",pos);
+			printf("La carpeta no esta vacia %d",pos);
 			return -ENOTEMPTY;
 		}
 		i++;
 	}
-	sem_wait(&fs_tmp.mux_osada);
+	//sem_wait(&fs_tmp.mux_osada);
 	/* Modifico datos en la Tabla de Archivos */
 	fs_tmp.file_table[pos].state = DELETED;
 	time((time_t *)&fs_tmp.file_table[pos].lastmod);
@@ -419,14 +436,14 @@ int osada_rmdir (const char *path)
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	sem_post(&fs_tmp.mux_osada);
-	//log_info(fs_tmp.log,"Fin rmdir");
+	//sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
 int osada_rename (const char *from, const char *to)
 {
-	//log_info(fs_tmp.log, "OSADA rename: %s - %s", from, to);
+	log_info(fs_tmp.log, "OSADA rename: %s - %s", from, to);
+	printf("  RENAME: %s - %s\n", from, to);
 	int i=0, pos, parent = 0xFFFF;
 
 	int8_t *path2 = calloc(strlen(from) + 1, 1);
@@ -458,7 +475,7 @@ int osada_rename (const char *from, const char *to)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			//log_error(fs_tmp.log, "No existe la ruta indicada");
-			return -EFAULT;
+			return -ENOENT;
 		}
 	}
 
@@ -480,20 +497,21 @@ int osada_rename (const char *from, const char *to)
  * Fin proceso de validacion
  */
 
-	sem_wait(&fs_tmp.mux_osada);
+	//sem_wait(&fs_tmp.mux_osada);
 	strcpy((char *)fs_tmp.file_table[i].fname, (char *)nombre_new);
 	time((time_t *)&fs_tmp.file_table[pos].lastmod);
 
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	sem_post(&fs_tmp.mux_osada);
+	//sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
-static int osada_open(const char *path, struct fuse_file_info *fi)
+static int osada_open(const char *path, osada_packet *mensaje)
 {
-	//log_info(fs_tmp.log, "OSADA open: %s", path);
+	log_info(fs_tmp.log, "OSADA open: %s", path);
+	printf("  OPEN: %s\n", path);
 	int i=0, pos=0, parent = 0xFFFF;
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
@@ -511,7 +529,7 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			//log_error(fs_tmp.log, "No existe la ruta indicada");
-			return -EFAULT;
+			return -ENOENT;
 		}
 	}
 
@@ -529,7 +547,7 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 			i++;
 		}
 		if ( i == MAX_FILES){
-			//log_error(fs_tmp.log, "        No existe el archivo");
+			//log_error(fs_tmp.log, "    No existe el archivo");
 			return -ENOENT;
 		}
 		pos = i;
@@ -537,7 +555,7 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 /*
  * fin proceso de validacion
  */
-	fi->fh = pos;
+	mensaje->offset = pos;
 	return 0;
 }
 
@@ -637,16 +655,17 @@ int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 	return 0;
 }
 
-int osada_statfs(const char *path, struct statvfs *statvfs)
+int osada_statfs(osada_socket sock)
 {
-	//log_info(fs_tmp.log,"OSADA statfs: %s", path);
-	statvfs->f_bsize = OSADA_BLOCK_SIZE;
-	statvfs->f_blocks = fs_tmp.header.fs_blocks;
-	sem_wait(&fs_tmp.mux_osada);
-	statvfs->f_bavail = statvfs->f_bfree = free_blocks(fs_tmp.bitmap);
-	sem_post(&fs_tmp.mux_osada);
-	//log_info(fs_tmp.log,"Bloques libres: %d", statvfs->f_bavail);
+	log_info(fs_tmp.log,"OSADA statfs");
+	osada_packet mensaje;
 
+	mensaje.size = fs_tmp.header.fs_blocks;
+	//sem_wait(&fs_tmp.mux_osada);
+	mensaje.offset = free_blocks(fs_tmp.bitmap);
+	//sem_post(&fs_tmp.mux_osada);
+	printf("  STATFS: FS:%d - Free:%d\n", mensaje.size, mensaje.offset);
+	send_socket(&mensaje, sock);
 	return 0;
 }
 
@@ -888,9 +907,11 @@ int osada_unlink (const char *path)
 	return 0;
 }
 
-int osada_utimens(const char* path, const struct timespec ts[2]){
+int osada_utimens(const char* path, uint32_t lastmod)
+{
+	log_info(fs_tmp.log, "OSADA UTIMENS: %s", path);
+	printf("  UTIMENS %s\n", path);
 
-	//log_info(fs_tmp.log, "OSADA UTIMENS: %s", path);
 	int i=0, pos, parent = 0xFFFF;
 
 	int8_t *path2 = calloc(strlen(path) + 1, 1);
@@ -898,9 +919,9 @@ int osada_utimens(const char* path, const struct timespec ts[2]){
 	int8_t *nombre_dir = (int8_t *)strrchr((char *)path2, '/');
 	nombre_dir[0] = '\0';
 	nombre_dir++;
-/*
- * comienza proceso de validacion
- */
+	/*
+	 * comienza proceso de validacion
+	 */
 	/* Valido que exista el path */
 	if(!strcmp((char *)path2, "")){
 		parent = 0xFFFF;
@@ -908,7 +929,7 @@ int osada_utimens(const char* path, const struct timespec ts[2]){
 		parent = is_parent(fs_tmp.file_table, path2);
 		if (parent == MAX_FILES){
 			//log_error(fs_tmp.log, "No existe la ruta indicada");
-			return -EFAULT;
+			return -ENOENT;
 		}
 	}
 
@@ -930,8 +951,7 @@ int osada_utimens(const char* path, const struct timespec ts[2]){
 /*
  * Fin proceso de validacion
  */
-	fs_tmp.file_table[pos].lastmod = ts[1].tv_sec;
-	//time((time_t *)&fs_tmp.file_table[pos].lastmod);
+	fs_tmp.file_table[pos].lastmod = lastmod;
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
@@ -939,12 +959,24 @@ int osada_utimens(const char* path, const struct timespec ts[2]){
 }
 
 int set_bitmap(uint8_t *bitmap, uint32_t pos){
-	bitmap[pos/8] |= 1<<(7-(pos%8));
+	/*
+	 * Agrego validacion para asegurar su funcionamiento
+	 */
+	if (bit_bitmap(bitmap, pos) == 0)
+		bitmap[pos/8] |= 1<<(7-(pos%8));
+	else
+		printf("ERROR - El Bit no esta libre\n");
 	return 0;
 }
 
 int clean_bitmap(uint8_t *bitmap, uint32_t pos){
-	bitmap[pos/8] &= ~(1<<(7-(pos%8)));
+	/*
+	 * Agrego validacion para asegurar su funcionamiento
+	 */
+	if (bit_bitmap(bitmap, pos) == 1)
+		bitmap[pos/8] &= ~(1<<(7-(pos%8)));
+	else
+		printf("ERROR - El Bit no esta ocupado\n");
 	return 0;
 }
 
@@ -952,6 +984,7 @@ uint32_t bit_bitmap(uint8_t *bitmap, uint32_t pos){
 	return ((bitmap[pos/8] & (1<<(7-(pos%8)))) ? 1 : 0);
 }
 
+/* VIEJO
 int32_t free_bit_bitmap(uint8_t *bitmap, uint32_t size){
 	int32_t pos = -1;
 	int i=0, j=0;
@@ -965,23 +998,37 @@ int32_t free_bit_bitmap(uint8_t *bitmap, uint32_t size){
 		i++;
 	}
 	return pos;
+}*/
+int32_t free_bit_bitmap(uint8_t *bitmap, uint32_t size){
+	int32_t pos = -1;
+	int i=0, j=0;
+	/* Saltear bloques Administrativos:
+	 * - Data_Offset
+	 */
+	i = data_offset;
+	while (i < size){
+		if (bit_bitmap(bitmap, i) == 0)
+			return (i);
+		i++;
+	}
+	return pos;
 }
 
 static struct fuse_operations osada_oper = {
-	.getattr   = osada_getattr,
-	.readdir   = osada_readdir,
+	//.getattr   = osada_getattr,
+	//.readdir   = osada_readdir,
 	.open 	   = osada_open,
 	.create    = osada_create,
 	.read      = osada_read,
 	.truncate  = osada_truncate,
 	.write     = osada_write,
 	.unlink    = osada_unlink,
-	.rmdir     = osada_rmdir,
+	//.rmdir     = osada_rmdir,
 	.ftruncate = osada_ftruncate,
-	.mkdir     = osada_mkdir,
-	.rename    = osada_rename,
-	.statfs    = osada_statfs,
-	.utimens   = osada_utimens,
+	//.mkdir     = osada_mkdir,
+	//.rename    = osada_rename,
+	//.statfs    = osada_statfs,
+	//.utimens   = osada_utimens,
 
 };
 
@@ -1034,7 +1081,7 @@ int main ( int argc , char * argv []) {
 
 	printf("\nInicia SERVIDOR\n");
 
-	osada_socket sockMaster, sock_new;
+	osada_socket sockMaster;
 
 
 	if((sockMaster = create_socket()) < 0) {
@@ -1054,151 +1101,33 @@ int main ( int argc , char * argv []) {
 	printf("---------------------------------\n");
 	printf("--- Socket escucha Master: %d ---\n",sockMaster);
 	printf("---------------------------------\n");
-/*	TIPO USO MAPA
-	while( (sock_new = accept(sockMaster, NULL, NULL))) {
-		if ( sock_new == -1 ) {
+
+//	TIPO USO MAPA
+
+	pthread_attr_t attr;
+	osada_socket sock_Cli;
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	while( (sock_Cli = accept(sockMaster, NULL, NULL)) ) {
+		if ( sock_Cli == -1 ) {
 			perror("accept");
 			break;
 		}
-		pthread_t nuevoEntrenador;
-		if( pthread_create( &nuevoEntrenador, NULL, handshake, (void*) &socketCliente) )
+		pthread_t nuevoCliente;
+		if( pthread_create( &nuevoCliente, &attr, procesar_cliente, (void*) &sock_Cli) ){
+			log_error(fs_tmp.log, "Error al crear nuevo hilo Cliente: %s", strerror(errno));
+			printf("Error al crear nuevo hilo Cliente: %s\n", strerror(errno));
 			perror("pthread_create");
-	}
-*/
-	fd_set set_socket;
-	osada_socket max_sock;
-	osada_packet mensaje;
-	lista_pokeCli *aux_pokeClis;
-	int32_t res;
-	pokeClis = NULL;
-	while(1)
-	{
-		FD_ZERO(&set_socket);
-		FD_SET(sockMaster, &set_socket);
-		max_sock = sockMaster;
-		aux_pokeClis = pokeClis;
-		while(aux_pokeClis != NULL)
-		{
-			if(aux_pokeClis->sock > max_sock)
-				max_sock = aux_pokeClis->sock;
-			FD_SET (aux_pokeClis->sock, &set_socket);
-			aux_pokeClis = aux_pokeClis->sgte;
 		}
-		select(max_sock+1, &set_socket, NULL, NULL, NULL);
-		/*
-		* Lista de socket PokeClientes
-		*/
-		aux_pokeClis=pokeClis;
-		while(aux_pokeClis != NULL)
-		{
-			if(FD_ISSET(aux_pokeClis->sock, &set_socket)>0)
-			{
-				if(recv_socket(&mensaje , aux_pokeClis->sock)>0)
-				{
-					if(mensaje.type == OK)
-					{
-						printf("BASTA DE PERMISO CONEXION!!!!\n");
-						////log_warning
-					}
-					if(mensaje.type == OP_GETATTR)
-					{
-						printf("GETATTR\n");
-						if(mensaje.len > 0)
-						{
-							printf("  Path: %s\n", (char *)mensaje.path);
-							res = osada_getattr(&mensaje);
-							if(res < 0){
-								printf("   Error: %s\n",strerror(res));
-								mensaje.type = OP_GETATTR;
-								mensaje.len = 4;
-								mensaje.cod_return = res;
-							}
-							send_socket(&mensaje, aux_pokeClis->sock);
-						}
-						else
-						{
-							printf("   MANDASTE CUALQUIER COSA\n");
-							////log_warning
-						}
-					}
-					if(mensaje.type == OP_READDIR)
-					{
-						printf("READDIR\n");
-						if(mensaje.len > 0)
-						{
-							printf("    Path: %s\n", (char *)mensaje.path);
-							osada_readdir(mensaje, aux_pokeClis->sock);
-							////log_info
-						}
-						else
-						{
-							printf("   MANDASTE CUALQUIER COSA\n");
-							////log_warning
-						}
-					}
-				}
-				else
-				{
-					printf("Se cayo la conexion con el PokeCliente: %d\n",aux_pokeClis->sock);
-					////log_warning
-					//sem_wait(&((info_ppal)->semaforo));
-					liberar_cliente_caido(aux_pokeClis->sock);
-					//sem_post(&((info_ppal)->semaforo));
-					printf("------------------------------\n");
-				}
-			}
-
-			aux_pokeClis = aux_pokeClis->sgte;
-		}
-
-		/*
-		* SOCKECT PRINCIPAL DE ESCUCHA
-		*/
-		if(FD_ISSET(sockMaster, &set_socket)>0)
-		{
-			if( (sock_new = accept(sockMaster,NULL,NULL)) <0)
-			{
-				printf("ERROR en la nueva conexion\n");
-				////log_error
-			}
-			else
-			{
-				printf("Nueva conexion");
-				if(recv_socket(&mensaje,sock_new)>0)
-				{
-					if(mensaje.type == OK)
-					{
-						// Nueva conexion
-						printf("Nueva conexion Cliente: %d\n",sock_new);
-						lista_pokeCli *nuevo_pokecli;
-						nuevo_pokecli = (lista_pokeCli *)malloc(sizeof(lista_pokeCli));
-						nuevo_pokecli->sock=sock_new;
-						//sem_init(&(nuevo_pokecli->semaforo),0,1);
-						nuevo_pokecli->sgte = pokeClis;
-						pokeClis = nuevo_pokecli;
-						FD_SET (nuevo_pokecli->sock, &set_socket);
-						////log_info
-						mensaje.type = OK;
-						mensaje.len = 0;
-						uint32_t cant;
-						if((cant = send_socket(&mensaje,sock_new))<0)
-							printf("Error envio OK");
-						else
-							printf("\nEnvio OK: %d",cant);
-						printf("------------------------------\n");
-					}
-					else
-					{
-						printf("ATENCION!!! Formato de mensaje no reconocido");
-						////log_warning
-						printf("------------------------------\n");
-					}
-				}
-			}
+		else{
+			log_info(fs_tmp.log, "Nuevo cliente conectado: %d", sock_Cli);
+			printf("Nuevo cliente conectado: %d\n", sock_Cli);
 		}
 	}
 
-	printf("\n\n POR ALGO SALIII \n\n");
+	printf("----------------------\n Fin Proceso Servidor \n----------------------");
 
 	return EXIT_SUCCESS;
 }
@@ -1220,4 +1149,192 @@ void liberar_cliente_caido(osada_socket sock)
 	else
 		anterior = anterior->sgte;
 	free(aux_pokeClis);
+}
+
+void *procesar_cliente(void *socket) {
+	osada_packet mensaje;
+	osada_socket sockCli = *(int *)socket;
+	int32_t res, cant;
+
+	printf("Nueva conexion\n");
+	if(recv_socket(&mensaje,sockCli)>0)
+	{
+		if(mensaje.type == OK)
+		{
+			printf("Nueva conexion Cliente: %d\n",sockCli);
+			////log_info
+			mensaje.type = OK;
+			mensaje.len = 0;
+			if((cant = send_socket(&mensaje,(osada_socket)sockCli))<0)
+				printf("Error: %s\n", strerror(errno));
+			printf("------------------------------\n");
+		}
+		else
+		{
+			printf("ATENCION!!! Formato de mensaje no reconocido para iniciar conexion");
+			////log_warning
+			printf("------------------------------\n");
+			return EXIT_FAILURE;
+		}
+	}
+	char * buf;
+	while(1){
+		if(recv_socket(&mensaje, sockCli)<=0)
+			break;
+
+		switch(mensaje.type){
+			case OK:
+				printf("BASTA DE PEDIDO CONEXION!!!\n");
+			break;
+			case OP_GETATTR:
+				printf("GETATTR\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_getattr(&mensaje);
+					if(res < 0){
+						printf("   Error: %s\n",strerror(-res));
+						mensaje.type = OP_GETATTR;
+						mensaje.len = 4;
+						mensaje.cod_return = res;
+					}
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_READDIR:
+				printf("READDIR\n");
+				if(mensaje.len > 0)
+				{
+					osada_readdir(mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_MKDIR:
+				printf("MKDIR\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_mkdir((char *)mensaje.path);
+					if(res < 0)
+						printf("   Error: %s\n",strerror(-res));
+					mensaje.type = OP_MKDIR;
+					mensaje.len = 4;
+					mensaje.cod_return = res;
+
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_RMDIR:
+				printf("RMDIR\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_rmdir((char *)mensaje.path);
+					if(res < 0)
+						printf("   Error: %s\n",strerror(-res));
+					mensaje.type = OP_RMDIR;
+					mensaje.len = 4;
+					mensaje.cod_return = res;
+
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_RENAME:
+				printf("RENAME\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_rename((char *)mensaje.path, (char *)mensaje.pathto);
+					if(res < 0)
+						printf("   Error: %s\n",strerror(-res));
+					mensaje.type = OP_RENAME;
+					mensaje.len = 4;
+					mensaje.cod_return = res;
+
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_STATFS:
+				printf("STATFS\n");
+				osada_statfs(sockCli);
+			break;
+			case OP_UTIMENS:
+				printf("UTIMENS\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_utimens((char *)mensaje.path, mensaje.lastmod);
+					if(res < 0)
+						printf("   Error: %s\n",strerror(-res));
+					mensaje.type = OP_UTIMENS;
+					mensaje.len = 4;
+					mensaje.cod_return = res;
+
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_OPEN:
+				printf("OPEN\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_open(mensaje.path, &mensaje);
+					if(res < 0){
+						printf("   Error: %s\n",strerror(-res));
+						mensaje.type = OP_OPEN;
+						mensaje.len = 4;
+						mensaje.cod_return = res;
+					}
+					send_socket(&mensaje, sockCli);
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			case OP_READ:
+				printf("READ\n");
+				if(mensaje.len > 0)
+				{
+					res = osada_read(mensaje.path, mensaje.size, mensaje.offset,
+							mensaje.lastmod, sockCli);
+					if(res < 0)
+						printf("   Error: %s\n",strerror(-res));
+					if(res <= 0){
+						mensaje.type = OP_READ;
+						mensaje.len = 4;
+						mensaje.cod_return = res;
+						send_socket(&mensaje, sockCli);
+					}
+				}
+				else
+				{
+					printf("   MANDASTE CUALQUIER COSA\n");
+				}
+			break;
+			default :
+				printf("Funcion no implementada! Codigo:%d\n",mensaje.type);
+			break;
+		}
+	}
+	printf("-----------------\n Fin Hilo Cliente %d\n-----------------",sockCli);
+	close_socket(sockCli);
+	return EXIT_SUCCESS;
 }
