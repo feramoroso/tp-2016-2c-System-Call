@@ -26,7 +26,7 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 	strcpy((char *)mensaje.path, path);
 	mensaje.size = size;
 	mensaje.offset = offset;
-	mensaje.lastmod = fi->fh;
+	//mensaje.lastmod = fi->fh;
 	int32_t cant;
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
@@ -50,7 +50,7 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 		}
 		memcpy(buf + readed, mensaje.path, mensaje.cod_return);
 		readed += mensaje.cod_return;
-		log_trace(fs_tmp->log, "mensaje: %s",mensaje.path);
+		//log_trace(fs_tmp->log, "mensaje: %s",mensaje.path);
 	}
 	return readed;
 }
@@ -147,7 +147,6 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 	if (mensaje.offset == 0 )
 		return 0;
 	cantFiles = mensaje.offset;
-	log_trace(fs_tmp->log, "    Cant Files: %d", cantFiles);
 	while (i < cantFiles){
 		struct stat var_stat = {
 			.st_mode = S_IRWXU | S_IRWXG | S_IRWXO,
@@ -163,7 +162,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 		else
 			var_stat.st_mode |= S_IFREG;
 		filler(buf, mensaje.fname, &var_stat, 0);
-		log_trace(fs_tmp->log, "    %d - File: %s", i, mensaje.fname);
+		//log_trace(fs_tmp->log, "    %d - File: %s", i, mensaje.fname);
 		i++;
 		if (i < cantFiles){
 			cant = recv_socket(&mensaje,fs_tmp->sock);
@@ -303,35 +302,45 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
-	else
+	else{
 		fi->fh = mensaje.offset;
-
+		log_trace(fs_tmp->log, "   Open OK: %d", mensaje.cod_return);
+	}
 	return mensaje.cod_return;
 }
 
+
 int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 {
-	//log_info(fs_tmp->log, "OSADA create: %s", path);
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA create: %s", path);
+
+	osada_packet mensaje;
+	mensaje.type = OP_CREATE;
+	mensaje.len = 290;
+	//mensaje.offset = fi->fh;
+	strcpy((char *)mensaje.path, path);
+	int32_t cant;
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0){
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+		return -EFAULT;
+	}log_info(fs_tmp->log, "    Enviado %d",cant);
 	/*
-		osada_send(sock, Operacion, Parametros (path, mode, fi));
-	
-		Resultados posibles:
-		-	Todo bien
-				osada_open(path, fi);
-				return 0;
-		-	log_error(fs_tmp->log, "El nombre excede el limite de NRO caracteres impuesto por el enunciado.";
-				return -ENAMETOOLONG;
-		-	log_error(fs_tmp->log, "No existe la ruta indicada");
-				return -EFAULT;
-		-	log_error(fs_tmp->log, "No existe el archivo a eliminar");
-				return -ENOENT;
-		-	log_error(fs_tmp->log, "El archivo no se encuentra abierto.");
-				return -EINVAL;
-		-	log_error(fs_tmp->log, "No hay espacio disponible.");
-				return -ENOSPC; //EFBIG - ENOSPC;
-		-	log_error(fs_tmp->log, "Ya existe un archivo con el nombre.");
-				return -EEXIST;
-	*/return 0;
+	 * Espero respuesta del Servidor
+	 */
+	cant = recv_socket(&mensaje,fs_tmp->sock);
+	if(cant <= 0){
+		log_error(fs_tmp->log, "    ERROR recv(%d): %s", cant, strerror(errno));
+		return -EFAULT;
+	}
+
+	if (mensaje.cod_return < 0)
+		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+
+	osada_open(path, fi);
+	return mensaje.cod_return;
 }
 
 int osada_statfs(const char *path, struct statvfs *statvfs)
@@ -371,74 +380,156 @@ int osada_statfs(const char *path, struct statvfs *statvfs)
 
 int osada_write (const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-	//log_info(fs_tmp->log, "OSADA write: %s", path);
-	/*
-		osada_send(sock, Operacion, Parametros (path, bif, size, offset, fi));
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA write: %s", path);
 
-		Resultados posibles:
-		-	Todo bien
-				return CANTIDAD_COPIADO;
-		-	log_error(fs_tmp->log, "No existe la ruta indicada");
-				return -EFAULT;
-		-	log_error(fs_tmp->log, "No existe el archivo a eliminar");
-				return -ENOENT;
-		-	log_error(fs_tmp->log, "El archivo no se encuentra abierto.");
-				return -EINVAL;
-		-	log_error(fs_tmp->log, "No hay espacio suficiente.");
-				return -EFBIG; //EFBIG - ENOSPC
-	*/return 0;
+	if (size == 0) return 0;
+
+	int32_t partOffset, partSize, writed, cant;
+	osada_packet mensaje;
+	partOffset = offset;
+	partSize = 0;
+	writed = 0;
+
+
+	mensaje.type = OP_WRITE;
+	mensaje.len = 546;
+	strcpy(mensaje.path, path);
+
+	while (writed < (int32_t)size ){
+		if ((size-writed) <= 256){
+			partSize = (size-writed);
+			mensaje.cod_return = 0; //ultimo
+		}
+		else{
+			partSize = 256;
+			mensaje.cod_return = 1; //hay mas
+		}
+		mensaje.size = partSize;
+		mensaje.offset = partOffset;
+		//mensaje.lastmod = fi->fh;
+		memcpy(mensaje.pathto, buf + writed, partSize);
+		cant = send_socket(&mensaje,fs_tmp->sock);
+		if(cant<0){
+			log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+			return -EFAULT;
+		}
+		/*
+		 * Espero respuesta del Servidor
+		 */
+		cant = recv_socket(&mensaje,fs_tmp->sock);
+		if(cant <= 0){
+			log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+			return -EFAULT;
+		}
+		if (mensaje.cod_return < 0){
+			log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+			return mensaje.cod_return;
+		}else{
+			writed += mensaje.cod_return;
+			partOffset = offset + writed;
+		}
+	}
+	return writed;
 }
 
 int osada_ftruncate (const char *path, off_t offset, struct fuse_file_info *fi)
 {
-	//log_info(fs_tmp->log, "OSADA ftruncate: %s", path);
-	/*
-		osada_send(sock, Operacion, Parametros (path, offset, fi));
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA ftruncate: %s", path);
 
-		Resultados posibles:
-		-	Todo bien
-				return 0;
-		-	log_error(fs_tmp->log, "No existe la ruta indicada");
-				return -EFAULT;
-		-	log_error(fs_tmp->log, "No existe el archivo a eliminar");
-				return -ENOENT;
-		-	log_error(fs_tmp->log, "El archivo no se encuentra abierto.");
-				return -EINVAL;
-		-	log_error(fs_tmp->log, "No hay espacio suficiente.");
-				return -EFBIG; //EFBIG - ENOSPC
-	*/return 0;
+	osada_packet mensaje;
+	mensaje.type = OP_FTRUNCATE;
+	mensaje.len = 290;
+	mensaje.offset = offset;
+	strcpy(mensaje.path, path);
+
+	int32_t cant;
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0){
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	/*
+	 * Espero respuesta del Servidor
+	 */
+	cant = recv_socket(&mensaje,fs_tmp->sock);
+	if(cant <= 0){
+		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	if (mensaje.cod_return < 0)
+		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+	return mensaje.cod_return;
 }
 
 int osada_truncate(const char * path, off_t offset)
 {
-	//log_info(fs_tmp->log, "OSADA truncate: %s", path);
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA truncate: %s", path);
+
+	osada_packet mensaje;
+	mensaje.type = OP_FTRUNCATE;
+	mensaje.len = 290;
+	mensaje.offset = offset;
+	strcpy(mensaje.path, path);
+
+	int32_t cant;
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0){
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+		return -EFAULT;
+	}
+
 	/*
-		osada_send(sock, Operacion, Parametros (path, offset));
-	
-		Resultados posibles:
-		-	Todo bien
-				return 0;
-		-	log_error(fs_tmp->log, "No existe la ruta indicada");
-				return -EFAULT;
-		-	log_error(fs_tmp->log, "No existe el archivo a eliminar");
-				return -ENOENT;
-	*/return 0;
+	 * Espero respuesta del Servidor
+	 */
+	cant = recv_socket(&mensaje,fs_tmp->sock);
+	if(cant <= 0){
+		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	if (mensaje.cod_return < 0)
+		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+	return mensaje.cod_return;
 }
 
 int osada_unlink (const char *path)
 {
-	//log_info(fs_tmp->log, "OSADA unlink: %s", path);
-	/*
-		osada_send(sock, Operacion, Parametros (path));
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA unlink: %s", path);
 
-		Resultados posibles:
-		-	Todo bien
-				return 0;
-		-	log_error(fs_tmp->log, "No existe la ruta indicada");
-				return -EFAULT;
-		-	log_error(fs_tmp->log, "No existe el archivo a eliminar");
-				return -ENOENT;
-	*/return 0;
+	osada_packet mensaje;
+	mensaje.type = OP_UNLINK;
+	mensaje.len = 290;
+	strcpy(mensaje.path, path);
+
+	int32_t cant;
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0){
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	/*
+	 * Espero respuesta del Servidor
+	 */
+	cant = recv_socket(&mensaje,fs_tmp->sock);
+	if(cant <= 0){
+		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	if (mensaje.cod_return < 0)
+		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+	return mensaje.cod_return;
 }
 
 int osada_utimens(const char* path, const struct timespec ts[2])
@@ -510,6 +601,25 @@ static void *osada_init(struct fuse_conn_info *conn)
 	return fs_tmp;
 }
 
+void osada_destroy(void * foo) //foo es private_data que devuelve el init
+{
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "----- OSADA DESTROY -----");
+
+/*	osada_packet mensaje;
+	mensaje.type = OP_DESTROY;
+	mensaje.len = 0;
+	int32_t cant;
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0)
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+*/
+	close_socket(((fs_osada_t *)foo)->sock);
+    log_destroy(((fs_osada_t *)foo)->log);
+    free(foo);
+}
+
 static struct fuse_operations osada_oper = {
 	.getattr   = osada_getattr,
 	.readdir   = osada_readdir,
@@ -521,12 +631,11 @@ static struct fuse_operations osada_oper = {
 	.utimens   = osada_utimens,
 	.open      = osada_open,
 	.read      = osada_read,
-	//.create    = osada_create,
-	//.truncate  = osada_truncate,
-	//.write     = osada_write,
-	//.unlink    = osada_unlink,
-	//.ftruncate = osada_ftruncate,
-	//.rename    = osada_rename,
+	.create    = osada_create,
+	.truncate  = osada_truncate,
+	.write     = osada_write,
+	.unlink    = osada_unlink,
+	.ftruncate = osada_ftruncate,
 };
 
 int main ( int argc , char * argv []) {

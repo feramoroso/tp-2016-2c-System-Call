@@ -64,7 +64,7 @@ typedef struct _lista_pokeCli{
 #pragma pack(pop)
 
 int is_parent(osada_file table[], int8_t *path);
-int32_t free_bit_bitmap(uint8_t *bitmap, uint32_t size);
+int32_t free_bit_bitmap(uint8_t *bitmap);
 //uint32_t free_blocks(uint8_t *bitmap);
 uint32_t bit_bitmap(uint8_t *bitmap, uint32_t pos);
 int set_bitmap(uint8_t *bitmap, uint32_t pos);

@@ -35,6 +35,7 @@ enum {
 							//		IN:	 path		OUT: COD, FS_Blocks, FREE_Blocks
 	OP_UTIMENS   = 14,	//int osada_utimens(const char* path, const struct timespec ts[2])
 							//		IN:	 path, lastmod		OUT: COD
+	OP_DESTROY   = 15,
 }; // Tipo de Mensaje u Operacion
 
 /* Opcion 1 - Datos Variables
