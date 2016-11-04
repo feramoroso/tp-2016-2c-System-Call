@@ -28,8 +28,10 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 	mensaje.offset = offset;
 	//mensaje.lastmod = fi->fh;
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -41,10 +43,12 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 	while ( mensaje.size == 1 ){
 		cant = recv_socket(&mensaje,fs_tmp->sock);
 		if(cant <= 0){
+			sem_post(&fs_tmp->mux_socket);
 			log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 			return -EFAULT;
 		}
 		if (mensaje.cod_return < 0){
+			sem_post(&fs_tmp->mux_socket);
 			log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 			return mensaje.cod_return;
 		}
@@ -52,6 +56,7 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 		readed += mensaje.cod_return;
 		//log_trace(fs_tmp->log, "mensaje: %s",mensaje.path);
 	}
+	sem_post(&fs_tmp->mux_socket);
 	return readed;
 }
 
@@ -74,8 +79,10 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 	mensaje.len = 290;//sizeof(osada_packet)-3;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -84,10 +91,11 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0){
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 		return mensaje.cod_return;
@@ -120,8 +128,10 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 	mensaje.len = 290; //sizeof(osada_packet)-3;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -131,11 +141,13 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
 
 	if (mensaje.cod_return < 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 		return mensaje.cod_return;
 	}
@@ -144,8 +156,10 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 	filler(buf, "..", NULL, 0);
 
 	int32_t i=0,cantFiles=0;
-	if (mensaje.offset == 0 )
+	if (mensaje.offset == 0 ){
+		sem_post(&fs_tmp->mux_socket);
 		return 0;
+	}
 	cantFiles = mensaje.offset;
 	while (i < cantFiles){
 		struct stat var_stat = {
@@ -167,6 +181,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 		if (i < cantFiles){
 			cant = recv_socket(&mensaje,fs_tmp->sock);
 			if(cant <= 0){
+				sem_post(&fs_tmp->mux_socket);
 				log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 				return -EFAULT;
 			}
@@ -174,6 +189,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 		}
 
 	}
+	sem_post(&fs_tmp->mux_socket);
 	return mensaje.cod_return;
 }
 
@@ -188,8 +204,10 @@ int osada_mkdir (const char *path, mode_t mode)
 	mensaje.len = 290;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -199,9 +217,11 @@ int osada_mkdir (const char *path, mode_t mode)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
+	sem_post(&fs_tmp->mux_socket);
 
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
@@ -220,8 +240,10 @@ int osada_rmdir (const char *path)
 	mensaje.len = 290;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -231,10 +253,11 @@ int osada_rmdir (const char *path)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 
@@ -253,8 +276,10 @@ int osada_rename (const char *from, const char *to)
 	strcpy((char *)mensaje.path, from);
 	strcpy((char *)mensaje.pathto, to);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -264,10 +289,11 @@ int osada_rename (const char *from, const char *to)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 
@@ -285,8 +311,10 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 	mensaje.len = 290;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -296,16 +324,18 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
-	else{
-		fi->fh = mensaje.offset;
+	/*else{
+		//fi->fh = mensaje.offset;
 		log_trace(fs_tmp->log, "   Open OK: %d", mensaje.cod_return);
-	}
+	}*/
+
 	return mensaje.cod_return;
 }
 
@@ -322,8 +352,10 @@ int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 	//mensaje.offset = fi->fh;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}log_info(fs_tmp->log, "    Enviado %d",cant);
@@ -332,10 +364,11 @@ int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv(%d): %s", cant, strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 
@@ -353,8 +386,10 @@ int osada_statfs(const char *path, struct statvfs *statvfs)
 	mensaje.type = OP_STATFS;
 	mensaje.len = 0;
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -364,10 +399,11 @@ int osada_statfs(const char *path, struct statvfs *statvfs)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 	else{
@@ -396,7 +432,7 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 	mensaje.type = OP_WRITE;
 	mensaje.len = 546;
 	strcpy(mensaje.path, path);
-
+	sem_wait(&fs_tmp->mux_socket);
 	while (writed < (int32_t)size ){
 		if ((size-writed) <= 256){
 			partSize = (size-writed);
@@ -431,6 +467,7 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 			partOffset = offset + writed;
 		}
 	}
+	sem_post(&fs_tmp->mux_socket);
 	return writed;
 }
 
@@ -447,8 +484,10 @@ int osada_ftruncate (const char *path, off_t offset, struct fuse_file_info *fi)
 	strcpy(mensaje.path, path);
 
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -458,10 +497,11 @@ int osada_ftruncate (const char *path, off_t offset, struct fuse_file_info *fi)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 	return mensaje.cod_return;
@@ -478,10 +518,11 @@ int osada_truncate(const char * path, off_t offset)
 	mensaje.len = 290;
 	mensaje.offset = offset;
 	strcpy(mensaje.path, path);
-
+	sem_wait(&fs_tmp->mux_socket);
 	int32_t cant;
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -491,10 +532,11 @@ int osada_truncate(const char * path, off_t offset)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 	return mensaje.cod_return;
@@ -510,10 +552,11 @@ int osada_unlink (const char *path)
 	mensaje.type = OP_UNLINK;
 	mensaje.len = 290;
 	strcpy(mensaje.path, path);
-
+	sem_wait(&fs_tmp->mux_socket);
 	int32_t cant;
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -523,10 +566,11 @@ int osada_unlink (const char *path)
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 	return mensaje.cod_return;
@@ -544,8 +588,10 @@ int osada_utimens(const char* path, const struct timespec ts[2])
 	strcpy((char *)mensaje.path, path);
 	mensaje.lastmod = ts[1].tv_sec;
 	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
 	}
@@ -555,10 +601,11 @@ int osada_utimens(const char* path, const struct timespec ts[2])
 	 */
 	cant = recv_socket(&mensaje,fs_tmp->sock);
 	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-
+	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
 
@@ -598,14 +645,13 @@ static void *osada_init(struct fuse_conn_info *conn)
 			log_info(fs_tmp->log, "Conexion al Pokedex Servidor OK.");
 
 	}else log_error(fs_tmp->log, "Fallo la conexion al Pokedex Servidor.");
+	sem_init(&fs_tmp->mux_socket,0,1);
 	return fs_tmp;
 }
 
 void osada_destroy(void * foo) //foo es private_data que devuelve el init
 {
-	struct fuse_context* context = fuse_get_context();
-	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
-	log_info(fs_tmp->log, "----- OSADA DESTROY -----");
+	log_info(((fs_osada_t *)foo)->log, "----- OSADA DESTROY -----");
 
 /*	osada_packet mensaje;
 	mensaje.type = OP_DESTROY;
@@ -615,6 +661,7 @@ void osada_destroy(void * foo) //foo es private_data que devuelve el init
 	if(cant<0)
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 */
+	sem_destroy(&((fs_osada_t *)foo)->mux_socket);
 	close_socket(((fs_osada_t *)foo)->sock);
     log_destroy(((fs_osada_t *)foo)->log);
     free(foo);

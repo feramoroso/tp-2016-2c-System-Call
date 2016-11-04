@@ -123,8 +123,7 @@ static int osada_read(const char *path, uint32_t size, uint32_t offset,
 
 static int osada_getattr(osada_packet *mensaje)
 {
-	//printf("  GETATTR %s\n", mensaje->path);
-	//log_info(fs_tmp.log, "Pedido GETATTR: %s", mensaje->path);
+	//log_info(fs_tmp.log, ""  GETATTR %s", mensaje->path);
 
 	int i=0, pos, parent = 0xFFFF;
 	int8_t *path2 = calloc(strlen((char *)mensaje->path) + 1, 1);
@@ -213,8 +212,7 @@ int is_parent(osada_file table[], int8_t *path){
 
 static int osada_readdir(osada_packet mens, osada_socket sock)
 {
-	printf("  READDIR %s\n", mens.path);
-	log_info(fs_tmp.log, "Pedido READDIR: %s", mens.path);
+	log_info(fs_tmp.log, "Osada READDIR: %s", mens.path);
 
 	int i=0, pos=0, parent = 0xFFFF;
 
@@ -291,6 +289,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 	}
 
 	free(path2);
+	printf("  FIN READDIR %s\n", mens.path);
 
 	return 0;
 }
@@ -666,7 +665,7 @@ int osada_statfs(osada_socket sock)
 
 int osada_write (osada_packet mensaje)
 {
-	log_info(fs_tmp.log, "OSADA write: %s - %d - %d", mensaje.path, mensaje.size, mensaje.off);
+	log_info(fs_tmp.log, "OSADA write: %s - %d - %d", mensaje.path, mensaje.size, mensaje.offset);
 
 	uint16_t pos = is_parent(fs_tmp.file_table, mensaje.path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
@@ -674,37 +673,32 @@ int osada_write (osada_packet mensaje)
 		printf("fallo is parent  %s",strerror(ENOENT));
 		return -ENOENT;
 	}
-	if(fs_tmp.file_table[pos].file_size < (mensaje.offset + mensaje.size))
+	log_trace(fs_tmp.log, "    %s", fs_tmp.file_table[pos].fname);
+	if(fs_tmp.file_table[pos].file_size < (mensaje.offset + mensaje.size)){
+		log_trace(fs_tmp.log, "    size: %d trunc a: %d", fs_tmp.file_table[pos].file_size, (mensaje.offset + mensaje.size));
 		osada_ftruncate (mensaje.path, ((mensaje.offset) + (mensaje.size)));
+		log_trace(fs_tmp.log, "    size: %d", fs_tmp.file_table[pos].file_size);
+	}
 
 	uint32_t block_start = fs_tmp.file_table[pos].first_block;
 	div_t block_offset = div(mensaje.offset, OSADA_BLOCK_SIZE);
 	uint32_t i =0;
-	//log_trace(fs_tmp.log, "3-");
 	for ( i=0 ; i < block_offset.quot ; i++ ){
 		block_start = fs_tmp.fat_osada[block_start];
 	}
-		//log_trace(fs_tmp.log, "4-");
 	//sem_wait(&fs_tmp.mux_osada);
 	size_t copied=0, size_to_copy=0;
-	dirBlock = pokedex + (data_offset + block_start) * OSADA_BLOCK_SIZE + block_offset.rem;
-		log_trace(fs_tmp.log, "4.1-");
 	size_to_copy = (OSADA_BLOCK_SIZE - block_offset.rem);
-		log_trace(fs_tmp.log, "4.2-");
 	if (mensaje.size < size_to_copy) size_to_copy = mensaje.size;
-		log_trace(fs_tmp.log, "4.3-");
-	memcpy(dirBlock, mensaje.pathto, size_to_copy);
-		log_trace(fs_tmp.log, "4.4-");
 	// Actualizo Bloque de Datos
+	dirBlock = pokedex + (data_offset + block_start) * OSADA_BLOCK_SIZE + block_offset.rem;
+	memcpy(dirBlock, mensaje.pathto, size_to_copy);
 	msync(dirBlock, OSADA_BLOCK_SIZE, MS_ASYNC);
-		//log_trace(fs_tmp.log, "4.5-");
 	copied += size_to_copy;
-		//log_trace(fs_tmp.log, "5-");
 	i=0;
 	uint32_t new_block;
 	while (copied < mensaje.size ){
 		i += 1;
-			//log_trace(fs_tmp.log, "6-");
 		if (fs_tmp.fat_osada[block_start] == 0xFFFFFFFF){
 			//Inserto nuevo bloque de datos
 			new_block = free_bit_bitmap(fs_tmp.bitmap);
@@ -722,26 +716,23 @@ int osada_write (osada_packet mensaje)
 			memcpy(dirBlock, fs_tmp.fat_osada, (fs_tmp.header.data_blocks * 4));
 			msync(dirBlock, (fs_tmp.header.data_blocks * 4), MS_ASYNC);
 		}
-			//log_trace(fs_tmp.log, "7-");
 		block_start = fs_tmp.fat_osada[block_start];
 		if ((mensaje.size - copied) < OSADA_BLOCK_SIZE)
 			size_to_copy = (mensaje.size - copied);
 		else
 			size_to_copy = OSADA_BLOCK_SIZE;
+		// Actualizo Bloque de Datos
 		dirBlock = pokedex + (data_offset + block_start) * OSADA_BLOCK_SIZE;
 		memcpy(dirBlock, mensaje.pathto + copied , size_to_copy);
-		// Actualizo Bloque de Datos
 		msync(dirBlock, size_to_copy, MS_ASYNC);
 		copied += size_to_copy;
 	}
-		//log_trace(fs_tmp.log, "8-");
 	fs_tmp.file_table[pos].file_size = mensaje.offset + copied;
 	// Actualizo File Table
 	dirBlock = pokedex + (1+fs_tmp.header.bitmap_blocks)*OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
 	//sem_post(&fs_tmp.mux_osada);
-		//log_trace(fs_tmp.log, "9-");
 	return copied;
 }
 

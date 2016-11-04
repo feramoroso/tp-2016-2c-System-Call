@@ -18,7 +18,6 @@ typedef enum __attribute__((packed)) {
 
 typedef struct {
 	t_log			*log;
-	sem_t			mux_log;
 	osada_socket	sock;
 	sem_t			mux_socket;
 }fs_osada_t;
