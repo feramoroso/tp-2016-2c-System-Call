@@ -239,7 +239,7 @@ void obtenerMedalla() {
 	rutaMedalla[nB] = '\0';
 	printf("\n%d", nB);
 	printf("\n%s\n", rutaMedalla);
-	sprintf(aux, "cp %s %s", rutaMedalla, entrenador->dirMedallas);
+	sprintf(aux, "cp %s%s %s", rutaPokeDex, rutaMedalla, entrenador->dirMedallas);
 	system(aux);
 //	copiar(rutaMedalla, entrenador->dirMedallas);
 }
@@ -256,12 +256,12 @@ void obtenerCoordenadas() {
 
 	/* Transformo los tres primeros caracteres XXX en int */
 	entrenador->obj.x = atoi(string_substring(coordenadas, 0, 3));
-	/* Transformo los tres primeros caracteres YYY en int */
+	/* Transformo los tres ultimos caracteres YYY en int */
 	entrenador->obj.y = atoi(string_substring(coordenadas, 3, 3));
 	printf("\nCoordenadas de %c    x: %d  y: %d\n", entrenador->obj.id, entrenador->obj.x, entrenador->obj.y);
 	fflush(stdout);
 }
-int irPosicionPokenest() {
+void irPosicionPokenest() {
 	char msj[2+1];
 	while ( (entrenador->x != entrenador->obj.x) || (entrenador->y != entrenador->obj.y) ) {
 		/*  Movimiento en X */
@@ -289,7 +289,6 @@ int irPosicionPokenest() {
 			recv(entrenador->socket, msj, 2, 0);
 		}
 	}
-	return 0;
 }
 int deadlock() {
 	int nB;
@@ -324,7 +323,8 @@ int capturarPokemon() {
 		printf("\n%d", nB);
 		printf("\n%s\n\n", mensaje);
 	}
-	sprintf(aux, "cp %s \"%s\"", mensaje, entrenador->dirBill);
+
+	sprintf(aux, "cp %s%s \"%s\"", rutaPokeDex, mensaje, entrenador->dirBill);
 	system(aux);
 //	copiar(mensaje, entrenador->dirBill);
 	return 0;
@@ -385,7 +385,7 @@ int main(int argc , char *argv[]) {
 		return EXIT_FAILURE;
 	}
 /**************************************************   SECCION METADATA   ***************************************************************************/
-	rutaPokeDex = argv[2];
+	rutaPokeDex = realpath(argv[2], NULL);
 	getEntrenador(argv[1]);
 /**************************************************   SECCION SEÑALES   ****************************************************************************/
 	signal(SIGUSR1, signalRutina);

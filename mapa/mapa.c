@@ -185,7 +185,7 @@ tPokeNestMetadata *getPokeNestMetadata(char * nomPokeNest) {
 	pokeNestMetadata->tipo = strdup( config_get_string_value(pokeNestConfig, "Tipo") );
 	pokeNestMetadata->posx = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[0]);
 	pokeNestMetadata->posy = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[1]);
-	pokeNestMetadata->id    = config_get_string_value(pokeNestConfig, "Identificador")[0];
+	pokeNestMetadata->id   = config_get_string_value(pokeNestConfig, "Identificador")[0];
 	config_destroy(pokeNestConfig);
 	return pokeNestMetadata;
 }
@@ -431,7 +431,7 @@ int deadlockDetect(int eMax, int pMax) {
 						break;
 					}
 			}
-		if(flag == 1) {
+		if( flag ) {
 			m[k] = i;
 			k++;
 			for(j = 0; j < pMax; j++)
@@ -440,15 +440,12 @@ int deadlockDetect(int eMax, int pMax) {
 	}
 	/* Procesos en Deadlock */
 	for(i = 0; i < eMax; i++) {
-		found = 0;
+		found = 1;
 		for(j = 0; j < k; j++)
 			if(i == m[j])
-				found = 1;
-		if(found == 0) {
-			/* Le aviso al entrenador que esta en Deadlock */
+				found = 0;
+		if( found ) {
 			entrenador = list_get(eBlocked, i);
-			send(entrenador->socket, "D", 1, 0);
-			usleep(10000);
 			/* Si esta activado el modo batalla agrego a los entrenadores en la lista Deadlock */
 			if ( mapaMetadata->batalla ) {
 				list_add(eDeadlock, entrenador);
@@ -456,12 +453,22 @@ int deadlockDetect(int eMax, int pMax) {
 			}
 		}
 	}
-	if(!found) {
+	/* Notifico a los entrenadores en Deadlock */
+	if(list_size(eDeadlock) > 1) {
+		i = 0;
+		while(list_size(eDeadlock) > i) {
+			/* Le aviso al entrenador que esta en Deadlock */
+			entrenador = list_get(eDeadlock, i);
+			send(entrenador->socket, "D", 1, 0);
+			usleep(10000);
+			i++;
+		}
 		/* Si se detecta Deadlock imprimo tablas y logueo */
 		log_warning(logger, "Interbloqueo Detectado!");
 		imprimirEstructuras(eMax, pMax);
 		return 1;
 	}
+	list_clean(eDeadlock);
 	return 0;
 }
 void batallaPokemon() {
@@ -547,9 +554,9 @@ void *asignador() {
 				list_add(entrenador->pokemons, pokemon);
 				restarRecurso(items, pokemon->id);
 				/* Envio ruta del Pokemon */
-				sprintf(mensaje,"%s/Mapas/%s/PokeNests/%s/%s%03d.dat", rutaPokeDex, mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
+				sprintf(mensaje,"/Mapas/%s/PokeNests/%s/%s%03d.dat", mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
 				send(entrenador->socket, mensaje, strlen(mensaje), 0);
-				log_info(logger, "Pokemon %s capturado por entrenador %c!", pokeNestArray[pos]->nombre, entrenador->id);
+				log_info(logger, "Pokemon %s capturado por entrenador %c.", pokeNestArray[pos]->nombre, entrenador->id);
 				printf("Pokemon %s capturado por entrenador %c!                     ", pokeNestArray[pos]->nombre, entrenador->id);
 				fflush(stdout);
 				nivel_gui_dibujar(items, mapaMetadata->nombre);
@@ -702,11 +709,11 @@ int main(int argc , char *argv[]) {
 	/* OBTENER METADATA DEL MAPA */
 	mapaMetadata         = malloc(sizeof(tMapaMetadata));
 	mapaMetadata->nombre = argv[1];
-	rutaPokeDex          = argv[2];
+	rutaPokeDex          = realpath(argv[2], NULL);
 	getMapaMetadata();
 
 	/* OBTENER LA RUTA DE LA MEDALLA */
-	mapaMetadata->medalla = string_from_format("%s/Mapas/%s/medalla-%s.jpg", rutaPokeDex, mapaMetadata->nombre, mapaMetadata->nombre);
+	mapaMetadata->medalla = string_from_format("/Mapas/%s/medalla-%s.jpg", mapaMetadata->nombre, mapaMetadata->nombre);
 
 	imprimirInfoMapa(mapaMetadata);
 
