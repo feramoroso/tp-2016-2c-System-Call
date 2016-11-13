@@ -56,16 +56,26 @@ typedef struct {
 /***************************************************************************************************************************************************/
 tEntrenador  *entrenador;
 char *rutaPokeDex;
+/* Data Consola */
+struct termios oldt, newt;
 /***************************************************************************************************************************************************/
 /************************************************         FUNCIONES            *********************************************************************/
 /***************************************************************************************************************************************************/
+void salir(int status) {
+	free(entrenador);
+	/******** RESTAURACION CONSOLA ********/
+	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	/**************************************/
+	system("setterm -cursor on");
+	exit(status);
+}
 tMapa *getMapa(char *nomMapa) {
 	tMapa *mapa = malloc(sizeof(tMapa));
 	mapa->nombre = strdup(nomMapa);
 	t_config *mapaConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapa->nombre));
 	if (mapaConfig == NULL) {
 		puts("No se encontro el mapa.");
-		exit(EXIT_FAILURE);
+		salir(EXIT_FAILURE);
 	}
 	mapa->ip        = strdup( config_get_string_value(mapaConfig, "IP") );
 	mapa->puerto    = config_get_int_value(mapaConfig, "Puerto");
@@ -86,7 +96,7 @@ void getEntrenador(char *nomEntrenador) {
 	t_config *entrenadorConfig = config_create(string_from_format("%s/Entrenadores/%s/metadata", rutaPokeDex, entrenador->nombre));
 	if (entrenadorConfig == NULL) {
 		puts("\n\nNo se encontro el entrenador.");
-		exit(EXIT_FAILURE);
+		salir(EXIT_FAILURE);
 	}
 	entrenador->id = config_get_string_value(entrenadorConfig, "simbolo")[0];
 	printf("\nNombre: %s [%c]", entrenador->nombre, entrenador->id);
@@ -164,6 +174,7 @@ void borrar() {
 	system(aux);
 	sprintf(aux, "rm %s*", entrenador->dirMedallas);
 	system(aux);
+	puts("\n\nArchivos de Objetivos cumplidos borrados.");
 }
 char getCaracter(char *msj) {
 	char c;
@@ -178,12 +189,12 @@ void desconectarMapa() {
 }
 void sinVidas() {
 	printf("\n\n\n\t\t******************************************************");
-	printf("\n\t\t\t\t%s has quedado sin vidas!"                             , entrenador->nombre);
+	printf(  "\n\t\t\t%s [%c] has quedado sin vidas!"                         , entrenador->nombre, entrenador->id);
 	printf(    "\n\t\t******************************************************");
 }
 void muerte() {
 	printf("\n\n\n\t\t**********************  MUERTE  **********************");
-	printf("\n\t\t\t\t%s has perdido una vida!"                             , entrenador->nombre);
+	printf(  "\n\t\t\t%s [%c] has perdido una vida!"                          , entrenador->nombre, entrenador->id);
 	printf(    "\n\t\t******************************************************");
 	entrenador->muertes++;
 	entrenador->vidasDisponibles--;
@@ -194,7 +205,7 @@ void maestroPokemon() {
 	tTotal   = tiempo( time(0) - entrenador->time );
 	tBlocked = tiempo( entrenador->timeBlocked );
 	printf("\n\n\n\t\t******************  FELICITACIONES  ******************");
-	printf(    "\n\t\t                       %s"                             , entrenador->nombre);
+	printf(    "\n\t\t                       %s [%c]"                             , entrenador->nombre, entrenador->id);
 	printf(    "\n\t\t      Te has convertido en Maestro Pokemon!"          );
 	printf(  "\n\n\t\t      Tiempo total :                 %2dh %2dm %2ds"   , tTotal.tm_hour, tTotal.tm_min, tTotal.tm_sec);
 	printf(    "\n\t\t      Cantidad de Muertes:                     %d"     , entrenador->muertes);
@@ -213,16 +224,16 @@ void conectarMapa(tMapa *mapa) {
 	entrenador->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if ( connect(entrenador->socket, (void*) &mapaDir, sizeof(mapaDir)) == -1) {
 		perror("\n\nMAPA");
-		exit(EXIT_FAILURE);
+		salir(EXIT_FAILURE);
 	}
 	printf("\n\nConexión Exitosa con %s!\n", mapa->nombre);
 	/* Recibo la bienvenida */
 	if( (nB = recv(entrenador->socket, mensaje, TAM_MENSAJE ,0)) < 1) {
 		perror("recv");
-		exit(EXIT_FAILURE);
+		salir(EXIT_FAILURE);
 	}
 	mensaje[nB] = '\0';
-	printf("\n%d", nB);
+//	printf("\n%d", nB);
 	printf("\n%s\n", mensaje);
 	/* Manda el simbolo al Mapa */
 	send(entrenador->socket, string_from_format("%c", entrenador->id), 1, 0);
@@ -237,8 +248,10 @@ void obtenerMedalla() {
 	send(entrenador->socket, "O", 1, 0);
 	nB = recv(entrenador->socket, rutaMedalla, TAM_MENSAJE, 0);
 	rutaMedalla[nB] = '\0';
-	printf("\n%d", nB);
-	printf("\n%s\n", rutaMedalla);
+//	printf("\n%d", nB);
+	puts("\n\n\nMapa Terminado!");
+	puts("Ruta de la medalla obtenida...");
+	printf("%s\n", rutaMedalla);
 	sprintf(aux, "cp %s%s %s", rutaPokeDex, rutaMedalla, entrenador->dirMedallas);
 	system(aux);
 //	copiar(rutaMedalla, entrenador->dirMedallas);
@@ -251,14 +264,18 @@ void obtenerCoordenadas() {
 	/* Recibo las coordenadas en formato XXXYYY */
 	nB = recv(entrenador->socket, coordenadas, 6, 0);
 	coordenadas[nB] = '\0';
-	printf("\n%d", nB);
-	printf("\n%s\n", coordenadas);
-
+//	printf("\n%d", nB);
+//	printf("\n%s\n", coordenadas);
+	if( coordenadas[0] == 'N') {
+		puts("No existe el Pokemon solicitado en el Mapa.");
+		fflush(stdout);
+		salir(EXIT_FAILURE);
+	}
 	/* Transformo los tres primeros caracteres XXX en int */
 	entrenador->obj.x = atoi(string_substring(coordenadas, 0, 3));
 	/* Transformo los tres ultimos caracteres YYY en int */
 	entrenador->obj.y = atoi(string_substring(coordenadas, 3, 3));
-	printf("\nCoordenadas de %c    x: %d  y: %d\n", entrenador->obj.id, entrenador->obj.x, entrenador->obj.y);
+	printf("\nCoordenadas\nx: %d  -  y: %d\n", entrenador->obj.x, entrenador->obj.y);
 	fflush(stdout);
 }
 void irPosicionPokenest() {
@@ -297,8 +314,8 @@ int deadlock() {
 	while (mensaje[0] != 'R' ) {
 		nB = recv(entrenador->socket, mensaje, 1, 0);
 		mensaje[nB] = '\0';
-		printf("\n%d", nB);
-		printf("\n%s\n\n", mensaje);
+//		printf("\n%d", nB);
+//		printf("\n%s\n\n", mensaje);
 		if ( mensaje[0] == 'K' )
 				return 1;
 	}
@@ -311,8 +328,12 @@ int capturarPokemon() {
 	printf("Capturando %c...\n", entrenador->obj.id);
 	nB = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
 	mensaje[nB] = '\0';
-	printf("\n%d", nB);
-	printf("\n%s\n\n", mensaje);
+//	printf("\n%d", nB);
+	if ( mensaje[0] != 'D' ) {
+		puts("Pokemon Capturado!");
+		puts("Ruta del Pokemon capturado...");
+		printf("%s\n", mensaje);
+	}
 	while ( mensaje[0] == 'D' ) {
 		printf("\n\t\t**********  %s estas en DEADLOCK!  *********\n", entrenador->nombre);
 		if ( deadlock() )
@@ -320,8 +341,12 @@ int capturarPokemon() {
 		printf("\n\t**********  %s has sobrevivido a la Batalla Pokemon!  *********\n\n", entrenador->nombre);
 		nB = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
 		mensaje[nB] = '\0';
-		printf("\n%d", nB);
-		printf("\n%s\n\n", mensaje);
+//		printf("\n%d", nB);
+		if ( mensaje[0] != 'D' ) {
+			puts("Pokemón Capturado!");
+			puts("Ruta del Pokemon capturado...");
+			printf("%s\n", mensaje);
+		}
 	}
 
 	sprintf(aux, "cp %s%s \"%s\"", rutaPokeDex, mensaje, entrenador->dirBill);
@@ -331,7 +356,7 @@ int capturarPokemon() {
 }
 int jugarObjetivo() {
 	time_t tBloqueado;
-	printf("\n\n\nObjetivo: %c", entrenador->obj.id);
+	printf("\n\nObjetivo: %c", entrenador->obj.id);
 	fflush(stdout);
 	obtenerCoordenadas();
 	irPosicionPokenest();
@@ -392,7 +417,6 @@ int main(int argc , char *argv[]) {
 	signal(SIGTERM, signalRutina);
 /**************************************************  SECCION PROGRAMA   ****************************************************************************/
 	/******** MODIFICACION CONSOLA ********/
-	struct termios oldt, newt;
 	tcgetattr(STDIN_FILENO, &oldt);
 	newt = oldt;
 	newt.c_lflag &= ~( ICANON | ECHO );
@@ -404,8 +428,7 @@ int main(int argc , char *argv[]) {
 	char jugar = 'r';
 	while( jugar == 'r' || jugar == 'R') {
 		system("clear");
-		printf("\n\t\t\t**********  BIENVENIDO AL JUEGO %s  **********", entrenador->nombre);
-		printf("\n\nNumero de Reintentos : %d", entrenador->reintentos);
+		printf("\n\t\t**********  BIENVENIDO AL JUEGO %s  **********", entrenador->nombre);
 		entrenador->vidasDisponibles = entrenador->vidas;
 		entrenador->deadlocks        = 0;
 		entrenador->muertes          = 0;
@@ -418,16 +441,12 @@ int main(int argc , char *argv[]) {
 			}
 		}
 		if( entrenador->vidasDisponibles == 0) {
-			borrar();
 			sinVidas();
+			borrar();
 		}
+		printf("\n\nNumero de Reintentos : %d", entrenador->reintentos);
 		jugar = getCaracter("\n\nPresione R para reintentar, cualquier otra tecla para salir...");
 		entrenador->reintentos++;
 	}
-	free(entrenador);
-	/******** RESTAURACION CONSOLA ********/
-	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-	/**************************************/
-	system("setterm -cursor on");
-	return EXIT_SUCCESS;
+	salir(EXIT_SUCCESS);
 }

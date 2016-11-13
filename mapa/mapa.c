@@ -146,7 +146,7 @@ int getPokeNestFromID(char id) {
 			return i;
 		i++;
 	}
-	return i;
+	return -1;
 }
 void devolverPokemons(tEntrenador *entrenador) {
 	tPokemonMetadata *pokemon;
@@ -324,13 +324,19 @@ void moverEntrenador(tEntrenador *entrenador, char eje) {
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	send(entrenador->socket, "OK", 2, 0);
 }
-void enviarCoordenadasEntrenador(tEntrenador *entrenador, char pokeNest) {
+int enviarCoordenadasEntrenador(tEntrenador *entrenador, char pokeNest) {
 	int pos = getPokeNestFromID(pokeNest);
+	if ( pos == -1 ) {
+		send(entrenador->socket, "N", 1, 0);
+		desconectarEntrenador(entrenador);
+		return EXIT_FAILURE;
+	}
 	entrenador->obj = pokeNest;
 	send(entrenador->socket, string_from_format("%3d%3d", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy), 6, 0);
 	printf("Entrenador %c en busqueda de Pokemon %s.                    ", entrenador->id, pokeNestArray[pos]->nombre);
 	fflush(stdout);
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
+	return EXIT_SUCCESS;
 }
 void solicitarPokemon(tEntrenador *entrenador, char pokeNest) {
 	int pos;
@@ -388,23 +394,160 @@ void imprimirEstructuras(int eMax, int pMax) {
     FILE *tablas;
     tablas = fopen(RUTA_LOG, "a");
 	int i,j;
-    fprintf(tablas, "\nEntrenador   -   Asignados   -   Pedidos   -   Disponibles");
+    /***************************** ENCABEZADO ******************************************/
+	fprintf(tablas, "\nEntrenador   -   Asignados    -    Pedidos    -    Disponibles");
+    fprintf(tablas, "\n                 ");
+    for(j = 0; j < pMax; j++)
+		fprintf(tablas, "%c ", pokeNestArray[j]->id);
+    fprintf(tablas, "          ");
+    for(j = 0; j < pMax; j++)
+    		fprintf(tablas, "%c ", pokeNestArray[j]->id);
+    fprintf(tablas, "        ");
+    for(j = 0; j < pMax; j++)
+    		fprintf(tablas, "%c ", pokeNestArray[j]->id);
+	/***********************************************************************************/
+
 	for(i = 0; i < eMax; i++) {
 		fprintf(tablas, "\n    %c            ", ((tEntrenador*)list_get(eBlocked, i))->id);
-		for(j=0;j<pMax;j++)
+		for(j = 0; j < pMax; j++)
 			fprintf(tablas, "%d ", matAsignados[i][j]);
 		fprintf(tablas, "          ");
-		for(j=0;j<pMax;j++)
+		for(j = 0; j < pMax; j++)
 			fprintf(tablas, "%d ", matPedidos[i][j]);
-		fprintf(tablas, "        ");
-		if(i==0)
-			for(j=0;j<pMax;j++)
+		if(i == 0) {
+			fprintf(tablas, "        ");
+			for(j = 0; j < pMax; j++)
 				fprintf(tablas, "%d ", vecDisponibles[j]);
+		}
 	}
 	fprintf(tablas, "\n\n");
 	fclose(tablas);
 }
 int deadlockDetect(int eMax, int pMax) {
+	tEntrenador *entrenador;
+	int i, j, again, flag = 0,
+	work[pMax],                 /* Copio el vector de Recursos Disponibles */
+	finish[eMax];               /* Vector con todos los procesos, 1 finaliza, 0 no finaliza */
+
+	/* Inicializo vectores work y finish */
+	for (i = 0; i < pMax; i++)
+		work[i] = vecDisponibles[i];
+	/* Asumo que terminan salvo que tengan recursos asignados */
+	for (i = 0; i < eMax; i++) {
+		finish[i] = 1;
+		for (j = 0; j < pMax; j++)
+			if ( matAsignados[i][j] ) {
+				finish[i] = 0;
+				break;
+			}
+	}
+	do {
+		again = 0;
+		for (i = 0; i < eMax; i++) {
+			if ( !finish[i] ) {
+				for (j = 0; j < pMax; j++)
+					if ( matPedidos[i][j] > work[j] ) {
+						flag = 1;
+						break;
+					}
+				if ( !flag ) {
+					for (j = 0; j < pMax; j++)
+						work[j] += matAsignados[i][j];
+					finish[i] = 1;
+					again = 1;
+				}
+			}
+		}
+	} while (again);
+
+	/* Si algun proceso esta en 0, se encuentra en Deadlock */
+	flag = 0;
+	for (i = 0; i < eMax; i++) {
+		if ( !finish[i] ) {
+			/* Al encontrar el primero ya se que hay un Deadlock */
+			flag = 1;
+			/* Si esta activado el modo batalla agrego a los entrenadores en la lista Deadlock */
+			if ( mapaMetadata->batalla ) {
+				entrenador = list_get(eBlocked, i);
+				list_add(eDeadlock, entrenador);
+				log_info(logger, "Entrenador %c agregado a la cola de Deadlock.", entrenador->id);
+				/* Por protocolo le aviso al entrenador que esta en Deadlock enviandole una "D" */
+				send(entrenador->socket, "D", 1, 0);
+				usleep(1000);
+			}
+		}
+	}
+	if ( flag ) {
+		log_warning(logger, "Interbloqueo Detectado!");
+		imprimirEstructuras(eMax, pMax);
+		return 1;
+	}
+	return 0;
+}
+int deadlockDetect1(int eMax, int pMax) {
+	tEntrenador *entrenador;
+	int i, j, nuevo, flag = 0,
+	work[pMax],                 /* Copio el vector de Recursos Disponibles */
+	finish[eMax];               /* Vector con todos los procesos, 1 finaliza, 0 no finaliza */
+
+	/* Inicializo vectores work y finish */
+	for (i = 0; i < pMax; i++)
+		work[i] = vecDisponibles[i];
+	/* Asumo que terminan salvo que tengan recursos asignados */
+	for (i = 0; i < eMax; i++) {
+		finish[i] = 1;
+		for (j = 0; j < pMax; j++)
+			if ( matAsignados[i][j] ) {
+				finish[i] = 0;
+				break;
+			}
+	}
+
+	/* Búsqueda de ciclos que impliquen interbloqueo */
+	nuevo = 0;
+	do {
+		for (i = 0; i < eMax; i++) {
+			if ( !finish[i] ) {
+				/* Guardo en j el recurso que esta pidiendo */
+				for (j = 0; j < pMax; j++)
+					if ( matPedidos[i][j] )
+						break;
+				/*******************************************/
+				if ( !work[j] )
+					continue;
+				finish[i] = 1;
+				for (j = 0; j < pMax; j++)
+					work[j] += matAsignados[i][j];
+				nuevo = 1;
+				break;
+			}
+		}
+	} while ( nuevo );
+
+	/* Si algun proceso esta en 0, se encuentra en Deadlock */
+	for (i = 0; i < eMax; i++) {
+		if ( !finish[i] ) {
+			/* Al encontrar el primero ya se que hay un Deadlock */
+			flag = 1;
+			/* Si esta activado el modo batalla agrego a los entrenadores en la lista Deadlock */
+			if ( mapaMetadata->batalla ) {
+				entrenador = list_get(eBlocked, i);
+				list_add(eDeadlock, entrenador);
+				log_info(logger, "Entrenador %c agregado a la cola de Deadlock.", entrenador->id);
+				/* Por protocolo le aviso al entrenador que esta en Deadlock enviandole una "D" */
+				send(entrenador->socket, "D", 1, 0);
+				usleep(1000);
+			}
+		}
+	}
+	if ( flag ) {
+		log_warning(logger, "Interbloqueo Detectado!");
+		imprimirEstructuras(eMax, pMax);
+		return 1;
+	}
+	return 0;
+}
+int deadlockDetect2(int eMax, int pMax) {
 	tEntrenador *entrenador;
 	int m[100], vecTemp[100],
 		found = 0, flag = 0,
@@ -589,7 +732,8 @@ void planRR() {
 		switch (mensajeCliente[0]) {
 		/* OBTENER COORDENADA OBJETIVO */
 		case 'C':
-			enviarCoordenadasEntrenador(entrenador, mensajeCliente[1]);
+			if( enviarCoordenadasEntrenador(entrenador, mensajeCliente[1]) )
+				return;
 			break;
 		/* MOVER AL ENTRENADOR */
 		case 'M':
@@ -634,7 +778,8 @@ void planSRDF() {
 		switch (mensajeCliente[0]) {
 		/* OBTENER COORDENADA OBJETIVO */
 		case 'C':
-			enviarCoordenadasEntrenador(entrenador, mensajeCliente[1]);
+			if( enviarCoordenadasEntrenador(entrenador, mensajeCliente[1]) )
+				return;
 			agregarReady(entrenador);
 			return;
 		/* MOVER AL ENTRENADOR */

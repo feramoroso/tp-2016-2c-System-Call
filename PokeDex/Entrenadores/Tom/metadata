@@ -1,6 +1,6 @@
 nombre=Tom
-simbolo=%
+simbolo=?
 hojaDeViaje=[PuebloPaleta]
-obj[PuebloPaleta]=[P,Z]
+obj[PuebloPaleta]=[P,K,B,Z]
 vidas=5
 reintentos=0

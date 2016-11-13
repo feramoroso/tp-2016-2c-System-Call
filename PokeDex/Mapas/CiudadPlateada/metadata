@@ -1,7 +1,7 @@
 TiempoChequeoDeadlock=7000
 Batalla=1
-algoritmo=RR
+algoritmo=SRDF
 quantum=5
 retardo=75
 IP=127.0.0.1
-Puerto=5003
+Puerto=5002
