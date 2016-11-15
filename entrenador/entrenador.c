@@ -19,6 +19,17 @@
 /***************************************************************************************************************************************************/
 #define TAM_MENSAJE  256
 
+/* COLORES */
+#define RESET        "\033[0m"
+#define SUPER        "\033[1m"              /* Bright White */
+#define BOLDCYAN     "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDRED      "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN    "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW   "\033[1m\033[33m"      /* Bold Yellow */
+#define _MAGENTA     "\033[95m"             /* Bright Magenta */
+
+
+/* TIPOS */
 typedef struct {
 	char  id;
 	int    x;
@@ -99,17 +110,17 @@ void getEntrenador(char *nomEntrenador) {
 		salir(EXIT_FAILURE);
 	}
 	entrenador->id = config_get_string_value(entrenadorConfig, "simbolo")[0];
-	printf("\nNombre: %s [%c]", entrenador->nombre, entrenador->id);
+	printf(SUPER "\nNombre: " RESET "%s " "[" BOLDGREEN "%c" RESET "]", entrenador->nombre, entrenador->id);
 	hojaDeViaje = config_get_array_value(entrenadorConfig, "hojaDeViaje");
-	printf("\n\nHOJA DE VIAJE");
+	printf(BOLDYELLOW "\n\nHOJA DE VIAJE" RESET);
 	entrenador->mapas = list_create();
 	i = 0;
 	while( hojaDeViaje[i] ) {
 		mapa = getMapa(hojaDeViaje[i]);
-		printf("\n\nMapa [%d]  %s", i+1, mapa->nombre);
-		printf(  "\nIP       : %s", mapa->ip);
-		printf(  "\nPuerto   : %d", mapa->puerto);
-		printf(  "\nObjetivos:");
+		printf(SUPER "\n\nMapa [%d]:  " RESET "%s", i+1, mapa->nombre);
+		printf(SUPER    "\nIP:        " RESET "%s", mapa->ip);
+		printf(SUPER    "\nPuerto:    " RESET "%d", mapa->puerto);
+		printf(SUPER    "\nObjetivos:"  RESET);
 		objetivos = config_get_array_value(entrenadorConfig, string_from_format("obj[%s]", mapa->nombre));
 		j = 0;
 		while(objetivos[j]) {
@@ -178,7 +189,7 @@ void borrar() {
 }
 char getCaracter(char *msj) {
 	char c;
-	puts(msj);
+	printf(SUPER "%s\n" RESET, msj);
 	tcflush(STDIN_FILENO, TCIFLUSH);
 	c = getc(stdin);
 	tcflush(STDIN_FILENO, TCIFLUSH);
@@ -188,14 +199,14 @@ void desconectarMapa() {
 	close(entrenador->socket);
 }
 void sinVidas() {
-	printf("\n\n\n\t\t******************************************************");
+	printf(BOLDRED "\n\n\n\t\t******************************************************");
 	printf(  "\n\t\t\t%s [%c] has quedado sin vidas!"                         , entrenador->nombre, entrenador->id);
-	printf(    "\n\t\t******************************************************");
+	printf(    "\n\t\t******************************************************" RESET);
 }
 void muerte() {
-	printf("\n\n\n\t\t**********************  MUERTE  **********************");
+	printf(SUPER "\n\n\n\t\t**********************  MUERTE  **********************");
 	printf(  "\n\t\t\t%s [%c] has perdido una vida!"                          , entrenador->nombre, entrenador->id);
-	printf(    "\n\t\t******************************************************");
+	printf(    "\n\t\t******************************************************" RESET);
 	entrenador->muertes++;
 	entrenador->vidasDisponibles--;
 	desconectarMapa();
@@ -204,14 +215,14 @@ void maestroPokemon() {
 	struct tm tTotal, tBlocked;
 	tTotal   = tiempo( time(0) - entrenador->time );
 	tBlocked = tiempo( entrenador->timeBlocked );
-	printf("\n\n\n\t\t******************  FELICITACIONES  ******************");
+	printf(BOLDGREEN "\n\n\n\t\t******************  FELICITACIONES  ******************");
 	printf(    "\n\t\t                       %s [%c]"                             , entrenador->nombre, entrenador->id);
 	printf(    "\n\t\t      Te has convertido en Maestro Pokemon!"          );
 	printf(  "\n\n\t\t      Tiempo total :                 %2dh %2dm %2ds"   , tTotal.tm_hour, tTotal.tm_min, tTotal.tm_sec);
 	printf(    "\n\t\t      Cantidad de Muertes:                     %d"     , entrenador->muertes);
 	printf(    "\n\t\t      Cantidad de Deadlocks:                   %d"     , entrenador->deadlocks);
 	printf(    "\n\t\t      Tiempo bloqueado en Pokenests: %2dh %2dm %2ds"   , tBlocked.tm_hour, tBlocked.tm_min, tBlocked.tm_sec);
-	printf(    "\n\t\t******************************************************");
+	printf(    "\n\t\t******************************************************" RESET);
 }
 void conectarMapa(tMapa *mapa) {
 	int nB;
@@ -234,7 +245,7 @@ void conectarMapa(tMapa *mapa) {
 	}
 	mensaje[nB] = '\0';
 //	printf("\n%d", nB);
-	printf("\n%s\n", mensaje);
+	printf(SUPER "\n%s\n" RESET, mensaje);
 	/* Manda el simbolo al Mapa */
 	send(entrenador->socket, string_from_format("%c", entrenador->id), 1, 0);
 }
@@ -249,7 +260,7 @@ void obtenerMedalla() {
 	nB = recv(entrenador->socket, rutaMedalla, TAM_MENSAJE, 0);
 	rutaMedalla[nB] = '\0';
 //	printf("\n%d", nB);
-	puts("\n\n\nMapa Terminado!");
+	puts(BOLDGREEN "\n\n\nMapa Terminado!" RESET);
 	puts("Ruta de la medalla obtenida...");
 	printf("%s\n", rutaMedalla);
 	sprintf(aux, "cp %s%s %s", rutaPokeDex, rutaMedalla, entrenador->dirMedallas);
@@ -325,25 +336,25 @@ int capturarPokemon() {
 	int nB;
 	char mensaje[TAM_MENSAJE], aux[TAM_MENSAJE];
 	send(entrenador->socket, string_from_format("G%c", entrenador->obj.id), 2, 0);
-	printf("Capturando %c...\n", entrenador->obj.id);
+	printf(_MAGENTA "Capturando %c...\n" RESET, entrenador->obj.id);
 	nB = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
 	mensaje[nB] = '\0';
 //	printf("\n%d", nB);
 	if ( mensaje[0] != 'D' ) {
-		puts("Pokemon Capturado!");
+		puts(BOLDYELLOW "Pokemón Capturado!" RESET);
 		puts("Ruta del Pokemon capturado...");
 		printf("%s\n", mensaje);
 	}
 	while ( mensaje[0] == 'D' ) {
-		printf("\n\t\t**********  %s estas en DEADLOCK!  *********\n", entrenador->nombre);
+		printf(BOLDRED "\n\t\t**********  %s estas en DEADLOCK!  *********\n" RESET, entrenador->nombre);
 		if ( deadlock() )
 			return 1;
-		printf("\n\t**********  %s has sobrevivido a la Batalla Pokemon!  *********\n\n", entrenador->nombre);
+		printf(SUPER "\n\t**********  %s has sobrevivido a la Batalla Pokemon!  *********\n\n" RESET, entrenador->nombre);
 		nB = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
 		mensaje[nB] = '\0';
 //		printf("\n%d", nB);
 		if ( mensaje[0] != 'D' ) {
-			puts("Pokemón Capturado!");
+			puts(BOLDYELLOW "Pokemón Capturado!" RESET);
 			puts("Ruta del Pokemon capturado...");
 			printf("%s\n", mensaje);
 		}
@@ -356,7 +367,7 @@ int capturarPokemon() {
 }
 int jugarObjetivo() {
 	time_t tBloqueado;
-	printf("\n\nObjetivo: %c", entrenador->obj.id);
+	printf(BOLDCYAN "\n\nObjetivo: " RESET SUPER "%c" RESET, entrenador->obj.id);
 	fflush(stdout);
 	obtenerCoordenadas();
 	irPosicionPokenest();

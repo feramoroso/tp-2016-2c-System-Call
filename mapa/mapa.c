@@ -208,7 +208,7 @@ int getPokeNestArray() {
 	char ruta[256];
 	sprintf(ruta, "%s/Mapas/%s/PokeNests/", rutaPokeDex, mapaMetadata->nombre);
 	dir = opendir(ruta);
-	while ((dirPokeNest = readdir(dir))) {
+	while ( dirPokeNest = readdir(dir) ) {
 		if ( (dirPokeNest->d_type == DT_DIR) && (strcmp(dirPokeNest->d_name, ".")) && (strcmp(dirPokeNest->d_name, "..")) ) {
 			if ( (pokeNestArray[i] = getPokeNestMetadata(dirPokeNest->d_name)) == NULL) {
 				closedir(dir);
