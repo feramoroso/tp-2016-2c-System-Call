@@ -59,7 +59,7 @@ static int osada_read(const char *path, uint32_t size, uint32_t offset,
 	int j = 0;
 	uint32_t otro = fs_tmp.file_table[pos].first_block;
 	while (otro != 0xFFFFFFFF){
-		printf("  Control: %d-%X\n", j, otro);
+		//printf("  Control: %d-%X\n", j, otro);
 		otro = fs_tmp.fat_osada[otro];
 		j++;
 	}
@@ -284,7 +284,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		}
 		i++;
 	}
-	printf("    Cant: %d\n",cant);
+	//printf("    Cant: %d\n",cant);
 	osada_packet mensaje;
 	for (i=0 ; i<cant ; i++){
 		mensaje.type = OP_READDIR;
@@ -295,7 +295,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		mensaje.lastmod = fs_tmp.file_table[files[i]].lastmod;
 		strcpy((char *)mensaje.fname, (char *)fs_tmp.file_table[files[i]].fname);
 		mensaje.file_state = fs_tmp.file_table[files[i]].state;
-		printf("    %d-%s\n",i, mensaje.fname);
+		//printf("    %d-%s\n",i, mensaje.fname);
 		send_socket(&mensaje, sock);
 		usleep(10000);
 	}
@@ -304,11 +304,11 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		mensaje.len = 13;
 		mensaje.cod_return = 0;
 		mensaje.offset = 0;
-		printf("    %d-%s\n",i, mensaje.fname);
+		//printf("    %d-%s\n",i, mensaje.fname);
 		send_socket(&mensaje, sock);
 	}
 
-	printf("  FIN READDIR %s\n", mens.path);
+	//printf("  FIN READDIR %s\n", mens.path);
 
 	return 0;
 }
@@ -577,7 +577,7 @@ static int osada_open(const char *path)
 int osada_create (char *path)
 {
 	log_info(fs_tmp.log, "OSADA create: %s", path);
-	printf("    TRACE: 1-");
+	//printf("    TRACE: 1-");
 	fflush(stdout);
 	int i=0, libre, parent = 0xFFFF;
 
@@ -693,7 +693,7 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 		return -ENOENT;
 	}
 	if(fs_tmp.file_table[pos].file_size < (offset + size)){
-		log_trace(fs_tmp.log, "    size: %d trunc a: %d", fs_tmp.file_table[pos].file_size, (offset + size));
+		//log_trace(fs_tmp.log, "    size: %d trunc a: %d", fs_tmp.file_table[pos].file_size, (offset + size));
 		int ret = osada_ftruncate (path, ((offset) + (size)));
 		if (ret != 0){
 			printf("QUILOMBO\n");
@@ -701,17 +701,17 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 			printf("QUILOMBO\n");
 			printf("QUILOMBO\n");
 		}
-		log_trace(fs_tmp.log, "    size: %d", fs_tmp.file_table[pos].file_size);
+		//log_trace(fs_tmp.log, "    size: %d", fs_tmp.file_table[pos].file_size);
 	}
 
 	uint32_t block_start = fs_tmp.file_table[pos].first_block;
 	div_t block_offset = div(offset, OSADA_BLOCK_SIZE);
-	printf("    Block Offset:%X\n",block_offset);
-	printf("    Block 0:%X\n",block_start);
+	//printf("    Block Offset:%X\n",block_offset);
+	//printf("    Block 0:%X\n",block_start);
 	uint32_t i =0;
 	for ( i=0 ; i < block_offset.quot ; i++ ){
 		block_start = fs_tmp.fat_osada[block_start];
-		printf("    Block %d:%X\n", i+1, block_start);
+		//printf("    Block %d:%X\n", i+1, block_start);
 	}
 	//sem_wait(&fs_tmp.mux_osada);
 	size_t copied=0, size_to_copy=0;
@@ -747,7 +747,7 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 			msync(dirBlock, (fs_tmp.header.data_blocks * 4), MS_ASYNC);
 		}
 		block_start = fs_tmp.fat_osada[block_start];
-		printf("    Block %d:%X\n", i, block_start);
+		//printf("    Block %d:%X\n", i, block_start);
 		if ((size - copied) < OSADA_BLOCK_SIZE)
 			size_to_copy = (size - copied);
 		else
@@ -758,12 +758,12 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 		msync(dirBlock, size_to_copy, MS_ASYNC);
 		copied += size_to_copy;
 	}
-	log_trace(fs_tmp.log, "    Write:copied: %d\n",copied);
+	//log_trace(fs_tmp.log, "    Write:copied: %d\n",copied);
 
 	i = 0;
 	uint32_t otro = fs_tmp.file_table[pos].first_block;
 	while (otro != 0xFFFFFFFF){
-		printf("  Control: %d-%X\n", i, otro);
+		//printf("  Control: %d-%X\n", i, otro);
 		otro = fs_tmp.fat_osada[otro];
 		i++;
 	}
@@ -806,8 +806,8 @@ int osada_ftruncate (const char * path, off_t offset)
 	int32_t block_abm = ((aux_new.rem)?aux_new.quot+1:aux_new.quot) -
 						((aux_old.rem)?aux_old.quot+1:aux_old.quot);
 
-	printf("    Blocks New:%d\n",aux_new.quot);
-	printf("    Blocks Old:%d\n",aux_old.quot);
+	//printf("    Blocks New:%d\n",aux_new.quot);
+	//printf("    Blocks Old:%d\n",aux_old.quot);
 	if(block_abm > 0){
 		uint32_t blocks_free = free_blocks(fs_tmp.bitmap);
 		//log_trace(fs_tmp.log, "       Need:%d Free:%d",block_abm, blocks_free);
@@ -817,24 +817,24 @@ int osada_ftruncate (const char * path, off_t offset)
 		}
 		while(block_abm){
 			block_start = fs_tmp.file_table[pos].first_block;
-			printf("    Block x:%X\n", block_start);
+			//printf("    Block x:%X\n", block_start);
 			while (fs_tmp.fat_osada[block_start] != 0xFFFFFFFF){
 				block_start = fs_tmp.fat_osada[block_start];
-				printf("    Block x:%X\n", block_start);
+				//printf("    Block x:%X\n", block_start);
 			}
 			//log_trace(fs_tmp.log, "Insert nuevo bloque");
 			//Inserto nuevo bloque de datos
 			aux_block = free_bit_bitmap(fs_tmp.bitmap);
-			printf("    Bit libre: %x\n",aux_block);
+			//printf("    Bit libre: %x\n",aux_block);
 			if (aux_block == 0xFFFFFFFF){
-				printf("    NO HAY ESPACIO!!!");
+				//printf("    NO HAY ESPACIO!!!");
 				//log_trace(fs_tmp.log, "No hay bitmap disponible");
 				return -ENOSPC;
 			}
 			set_bitmap(fs_tmp.bitmap, aux_block + data_offset);
 			fs_tmp.fat_osada[block_start] = aux_block ;
 			fs_tmp.fat_osada[aux_block] = 0xFFFFFFFF;
-			printf("    Block x:%X - %X\n", fs_tmp.fat_osada[block_start], aux_block);
+			//printf("    Block x:%X - %X\n", fs_tmp.fat_osada[block_start], aux_block);
 			// Actualizo BitMap
 			dirBlock = pokedex + OSADA_BLOCK_SIZE ;
 			memcpy(dirBlock, fs_tmp.bitmap, OSADA_BLOCK_SIZE * fs_tmp.header.bitmap_blocks);
@@ -882,7 +882,7 @@ int osada_ftruncate (const char * path, off_t offset)
 	int i=0;
 	uint32_t otro = fs_tmp.file_table[pos].first_block;
 	while (otro != 0xFFFFFFFF){
-		printf("  Control: %d-%X\n", i, otro);
+		//printf("  Control: %d-%X\n", i, otro);
 		otro = fs_tmp.fat_osada[otro];
 		i++;
 	}
@@ -1017,7 +1017,7 @@ int32_t free_bit_bitmap(uint8_t *bitmap){//, uint32_t size){
 
 int main ( int argc , char * argv []) {
 	printf("Pokedex Master!\n");
-	char *disco = "Files//challenge.bin";
+	char *disco = "Files//hdd.bin";
 	fs_tmp.log = log_create("logServidor.txt" , "PokedexServidor" , false, LOG_LEVEL_TRACE);
 
 	FILE*	pokedex1;
@@ -1169,7 +1169,7 @@ void *procesar_cliente(void *socket) {
 				printf("BASTA DE PEDIDO CONEXION!!!\n");
 			break;
 			case OP_GETATTR:
-				printf("GETATTR\n");
+				//printf("GETATTR\n");
 				if(mensaje.len > 0)
 				{
 					res = osada_getattr(&mensaje);
@@ -1319,7 +1319,7 @@ void *procesar_cliente(void *socket) {
 					mensaje.type = OP_WRITE;
 					mensaje.len = 4;
 					mensaje.cod_return = res;
-					printf("    Writed:%d\n",res);
+					//printf("    Writed:%d\n",res);
 					send_socket(&mensaje, sockCli);
 				}
 				else{printf("   MANDASTE CUALQUIER COSA len:%d\n",mensaje.len);}

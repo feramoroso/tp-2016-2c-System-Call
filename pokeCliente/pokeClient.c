@@ -64,7 +64,7 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 {
 	struct fuse_context* context = fuse_get_context();
 	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
-	log_info(fs_tmp->log, "OSADA getattr: %s", path);
+	//log_info(fs_tmp->log, "OSADA getattr: %s", path);
 	memset(stbuf, 0, sizeof(struct stat));
 	//Si path es igual a "/" nos estan pidiendo los atributos del punto de montaje
 	if(memcmp(path, "/", 2) == 0) {
@@ -145,7 +145,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 		return -EFAULT;
 	}
-	log_trace(fs_tmp->log, "    Cant: %d", mensaje.offset );
+	//log_trace(fs_tmp->log, "    Cant: %d", mensaje.offset );
 	if (mensaje.cod_return < 0){
 		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
@@ -162,7 +162,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 	}
 	cantFiles = mensaje.offset;
 	while (i < cantFiles){
-		log_trace(fs_tmp->log, "    %d-%s", i, mensaje.fname);
+		//log_trace(fs_tmp->log, "    %d-%s", i, mensaje.fname);
 		struct stat var_stat = {
 			.st_mode = S_IRWXU | S_IRWXG | S_IRWXO,
 			.st_nlink = 1,
@@ -336,7 +336,7 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 		//fi->fh = mensaje.offset;
 		//log_trace(fs_tmp->log, "   Open OK: %d", mensaje.cod_return);
 		if((fi->flags & O_TRUNC) && ((fi->flags & O_RDWR) || (fi->flags & O_WRONLY))) {
-			log_info(fs_tmp->log, "Open: truncando a 0");
+			//log_info(fs_tmp->log, "Open: truncando a 0");
 			return osada_ftruncate(path, 0, NULL);
 		}
 	}
@@ -363,7 +363,7 @@ int osada_create (const char *path, mode_t mode, struct fuse_file_info *fi)
 		sem_post(&fs_tmp->mux_socket);
 		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
 		return -EFAULT;
-	}log_info(fs_tmp->log, "    Enviado %d",cant);
+	}//log_info(fs_tmp->log, "    Enviado %d",cant);
 	/*
 	 * Espero respuesta del Servidor
 	 */
@@ -439,16 +439,16 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 		strcpy(mensaje.path, path);
 		if ((size-writed) < 256){
 			partSize = (size-writed);
-			log_trace(fs_tmp->log, "   Sale Diferencia: size-writed: %d", (size-writed));
+			//log_trace(fs_tmp->log, "   Sale Diferencia: size-writed: %d", (size-writed));
 			//mensaje.cod_return = 0; //ultimo
 		}
 		else{
 			partSize = 256;
-			log_trace(fs_tmp->log, "   Sale Fijo 256: size-writed: %d", (size-writed));
+			//log_trace(fs_tmp->log, "   Sale Fijo 256: size-writed: %d", (size-writed));
 			//mensaje.cod_return = 1; //hay mas
 		}
 		mensaje.size = partSize;
-		log_trace(fs_tmp->log, "    Part - Size:%d - Off:%d",mensaje.size, mensaje.offset);
+		//log_trace(fs_tmp->log, "    Part - Size:%d - Off:%d",mensaje.size, mensaje.offset);
 		mensaje.offset = partOffset;
 		//mensaje.lastmod = fi->fh;
 		memcpy(mensaje.pathto, buf + writed, partSize);
@@ -470,7 +470,7 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 			return mensaje.cod_return;
 		}
 		writed = writed + mensaje.cod_return;
-		log_trace(fs_tmp->log, "    writed(%d): %d de %d", mensaje.cod_return, writed, size);
+		//log_trace(fs_tmp->log, "    writed(%d): %d de %d", mensaje.cod_return, writed, size);
 		partOffset += mensaje.cod_return;
 	}while (writed < size );
 	sem_post(&fs_tmp->mux_socket);
