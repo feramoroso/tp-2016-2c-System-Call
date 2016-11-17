@@ -1,0 +1,6 @@
+nombre=Brook
+simbolo=8
+hojaDeViaje=[Verde,Gris]
+obj[Verde]=[R]
+obj[Gris]=[G]
+vidas=5
