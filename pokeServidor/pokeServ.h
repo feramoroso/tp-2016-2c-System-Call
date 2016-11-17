@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <commons/log.h>
 #include <semaphore.h>
+#include <pthread.h>
 #include "socks_fs.h"
 
 #define OSADA_BLOCK_SIZE 64
@@ -53,6 +54,7 @@ typedef struct {
 	uint32_t		*fat_osada;
 	t_log			*log;
 	sem_t			mux_osada;
+	pthread_rwlock_t	mux_files[MAX_FILES];
 }fs_osada_t;
 
 typedef struct _lista_pokeCli{

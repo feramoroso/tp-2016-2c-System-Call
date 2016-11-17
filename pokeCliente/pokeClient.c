@@ -6,10 +6,10 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <string.h>
-#include <commons/log.h>
 #include "pokeClient.h"
 #include "socks_fs.h"
 
+#define FILE_LOG "logFUSE.txt"
 
 /*
  * osada_read: Funcion FUSE
@@ -79,7 +79,7 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 	mensaje.len = 290;//sizeof(osada_packet)-3;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
-	sem_wait(&fs_tmp->mux_socket);
+	sem_wait(&(fs_tmp->mux_socket));
 	cant = send_socket(&mensaje,fs_tmp->sock);
 	if(cant<0){
 		sem_post(&fs_tmp->mux_socket);
@@ -108,6 +108,7 @@ static int osada_getattr(const char *path, struct stat *stbuf)
 	stbuf->st_size = mensaje.size;
 	stbuf->st_blksize = OSADA_BLOCK_SIZE;
 	stbuf->st_blocks = (mensaje.size / OSADA_BLOCK_SIZE) + 1;
+	stbuf->st_mtim.tv_sec = (time_t)mensaje.lastmod;
 
 	if (mensaje.file_state == DIRECTORY)
 		stbuf->st_mode |= S_IFDIR;
@@ -622,18 +623,23 @@ static void *osada_init(struct fuse_conn_info *conn)
 {
 	conn->want |= FUSE_CAP_ATOMIC_O_TRUNC;
 	fs_osada_t *fs_tmp = calloc(sizeof(fs_osada_t), 1);
-
-	fs_tmp->log = log_create("logFUSE.txt" , "PokCli" , false , LOG_LEVEL_TRACE);
-
+	char arch[15] = "logFUSE.txt";
+	fs_tmp->log = log_create( arch, "PokCli" , false , LOG_LEVEL_INFO);
+	//sleep(2);
+	if ((fs_tmp->log) == NULL){
+		sleep(10);
+		return EXIT_FAILURE;
+	}
+	//sleep(2);
 	if((fs_tmp->sock = create_socket())<0) {
 		log_error(fs_tmp->log, "Error al crear el socket: %s", strerror(errno));
 		exit(-EADDRNOTAVAIL);
-	}else log_info(fs_tmp->log,"Create Socket OK");
+	}else {log_info(fs_tmp->log,"Create Socket OK");}
 
 	if(connect_socket(fs_tmp->sock, (char *)"127.0.0.1", 3001)){
 		log_error(fs_tmp->log, "La conexion al Servidor no esta lista: %s", strerror(errno));
 		exit(-EADDRNOTAVAIL);
-	}else log_info(fs_tmp->log,"Connect Socket OK");
+	}else {log_info(fs_tmp->log,"Connect Socket OK");}
 	osada_packet mensaje;
 
 	mensaje.type = 0;
@@ -697,5 +703,6 @@ int main ( int argc , char * argv []) {
 	printf("\nInicia FUSE\n");
 	int ret=0;
 	ret = fuse_main(argc, argv, &osada_oper, NULL);
+	printf("\nFinalizo: %d", ret);
 	return ret;
 }

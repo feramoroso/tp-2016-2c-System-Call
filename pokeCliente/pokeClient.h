@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <semaphore.h>
+#include <commons/log.h>
 #include "socks_fs.h"
 
 #define OSADA_BLOCK_SIZE 64

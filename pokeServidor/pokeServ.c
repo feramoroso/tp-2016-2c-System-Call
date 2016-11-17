@@ -47,14 +47,19 @@ static int osada_read(const char *path, uint32_t size, uint32_t offset,
 	log_info(fs_tmp.log, "OSADA read: %s-%d-%d", path, (int)offset, (int)size);
 	printf("  READ: %s\n",path);
 
+	sem_wait(&fs_tmp.mux_osada);
+
 	uint16_t pos = is_parent(fs_tmp.file_table, path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
 		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
 		printf("fallo is parent  %s",strerror(ENOENT));
 		fflush(stdout);
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
+	sem_post(&fs_tmp.mux_osada);
 	if (size == 0) return 0;
+	pthread_rwlock_rdlock(&fs_tmp.mux_files[pos]);
 
 	int j = 0;
 	uint32_t otro = fs_tmp.file_table[pos].first_block;
@@ -127,6 +132,7 @@ static int osada_read(const char *path, uint32_t size, uint32_t offset,
 			mensaje.cod_return = copiedMSG;
 			send_socket(&mensaje, sock);
 		}
+	pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
 	return copied;
 }
 
@@ -141,6 +147,8 @@ static int osada_getattr(osada_packet *mensaje)
 	nombre_dir[0] = '\0';
 	nombre_dir++;
 
+
+	sem_wait(&fs_tmp.mux_osada);
 /*
  * Desde aca comienza la validacion que el PATH sea correcto
  * y recupera la posicion en el vector de la tabla
@@ -152,6 +160,7 @@ static int osada_getattr(osada_packet *mensaje)
 		if (parent == MAX_FILES){
 			log_error(fs_tmp.log, "    No existe la ruta indicada");
 			printf("    No existe la ruta indicada");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -172,21 +181,24 @@ static int osada_getattr(osada_packet *mensaje)
 		if ( i == MAX_FILES){
 			printf("    No existe Archivo o Carpeta\n");
 			log_error(fs_tmp.log, "    No existe la carpeta o archivo");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 		pos = i;
 	}
-/*
- * Termina la validacion
+	sem_post(&fs_tmp.mux_osada);
+ /* Termina la validacion
  * Esto deberia copiarse en una funcion que devuelta el numero del vector (pos)
  * o el error correspondiente.
  */
+	pthread_rwlock_rdlock(&fs_tmp.mux_files[pos]);
 	mensaje->type = OP_GETATTR;
 	mensaje->len = 17;
 	mensaje->size = fs_tmp.file_table[pos].file_size;
 	mensaje->lastmod = fs_tmp.file_table[pos].lastmod;
 	mensaje->file_state = fs_tmp.file_table[pos].state;
 	mensaje->cod_return = 0;
+	pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
 
 	return 0;
 }
@@ -222,24 +234,16 @@ int is_parent(osada_file table[], int8_t *path){
 static int osada_readdir(osada_packet mens, osada_socket sock)
 {
 	log_info(fs_tmp.log, "Osada READDIR: %s", mens.path);
-
-	/*int i=0;
-
-    uint16_t pos = is_parent(fs_tmp.file_table, mens.path);
-	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
-		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
-		printf("fallo is parent  %s",strerror(ENOENT));
-		return -ENOENT;
-	}*/
 	int i=0, pos=0, parent = 0xFFFF;
 
-		int8_t *path2 = calloc(strlen((char *)mens.path) + 1, 1);
-	    strcpy((char *)path2, (char *)mens.path);
-	    int8_t *nombre_dir = (int8_t *)strrchr((char *)path2, '/');
-	    nombre_dir[0] = '\0';
-	    nombre_dir++;
+	int8_t *path2 = calloc(strlen((char *)mens.path) + 1, 1);
+	strcpy((char *)path2, (char *)mens.path);
+	int8_t *nombre_dir = (int8_t *)strrchr((char *)path2, '/');
+	nombre_dir[0] = '\0';
+    nombre_dir++;
 
-	/*
+    sem_wait(&fs_tmp.mux_osada);
+    /*
 	 * Aca se repite el proceso de validacion
 	 */
 	    if(!strcmp((char *)path2, "")){
@@ -248,6 +252,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 			parent = is_parent(fs_tmp.file_table,path2);
 			if (parent == MAX_FILES){
 				//log_error(fs_tmp.log, "No existe la ruta indicada");
+				sem_post(&fs_tmp.mux_osada);
 				return -ENOENT;
 			}
 		}
@@ -267,13 +272,16 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 			}
 			if ( i == MAX_FILES){
 				//log_error(fs_tmp.log, "No existe la carpeta");
+				sem_post(&fs_tmp.mux_osada);
 				return -ENOENT;
 			}
 			pos = i;
 		}
+		sem_post(&fs_tmp.mux_osada);
 	/*
 	 * Termina proceso de validacion
 	 */
+
 	i=0;
 	uint32_t files[2048],cant=0;
 	while (i<MAX_FILES){
@@ -293,6 +301,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		mensaje.size = fs_tmp.file_table[files[i]].file_size;
 		mensaje.offset = cant; // Uso para informar que hay mas registros para enviar
 		mensaje.lastmod = fs_tmp.file_table[files[i]].lastmod;
+		//printf("Time!!! %s\n", asctime(gmtime(&(mensaje.lastmod))));
 		strcpy((char *)mensaje.fname, (char *)fs_tmp.file_table[files[i]].fname);
 		mensaje.file_state = fs_tmp.file_table[files[i]].state;
 		//printf("    %d-%s\n",i, mensaje.fname);
@@ -307,8 +316,6 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		//printf("    %d-%s\n",i, mensaje.fname);
 		send_socket(&mensaje, sock);
 	}
-
-	//printf("  FIN READDIR %s\n", mens.path);
 
 	return 0;
 }
@@ -330,6 +337,7 @@ int osada_mkdir (const char *path)
 		free(path2);
 		return -ENAMETOOLONG;
 	}
+	sem_wait(&fs_tmp.mux_osada);
 /*
  * Comienza proceso de validacion, en este caso solo valida el PATH
  */
@@ -341,6 +349,7 @@ int osada_mkdir (const char *path)
 		if (parent == MAX_FILES){
 			//printf("\t No existe la ruta indicada.\n");
 			free(path2);
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -360,6 +369,7 @@ int osada_mkdir (const char *path)
 		//log_error(fs_tmp.log, "No Hay espacio disponible en la Tabla de Archivos");
 		//sem_post(&fs_tmp.mux_osada);
 		free(path2);
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOSPC;
 	}
 	// Valido que no se repita el nombre
@@ -370,7 +380,8 @@ int osada_mkdir (const char *path)
 					(fs_tmp.file_table[i].state == DIRECTORY)){
 			//log_error(fs_tmp.log, "Ya existe una carpeta con el nombre \"%s\" en \"%s\".\n",nombre_arch, path2);
 			//sem_post(&fs_tmp.mux_osada);
-			return -1;
+			sem_post(&fs_tmp.mux_osada);
+			return -EEXIST;
 		}
 		i++;
 	}
@@ -380,13 +391,13 @@ int osada_mkdir (const char *path)
 	strcpy((char *)fs_tmp.file_table[libre].fname, (char *)nombre_arch);
 	fs_tmp.file_table[libre].parent_directory = parent;
 	fs_tmp.file_table[libre].file_size = 0;
-	time((time_t *)&fs_tmp.file_table[libre].lastmod);
-	fs_tmp.file_table[libre].first_block = 0xFFFFFFFF;
+	time((time_t *)&(fs_tmp.file_table[libre].lastmod));
 
+	fs_tmp.file_table[libre].first_block = 0xFFFFFFFF;
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	//sem_post(&fs_tmp.mux_osada);
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -403,7 +414,7 @@ int osada_rmdir (const char *path)
 	nombre_dir++;
 /*
  * Comienza proceso de validacion
- */
+ */sem_wait(&fs_tmp.mux_osada);
 	/* Valido que exista el path */
 	if(!strcmp((char *)path2, "")){
 		//log_info(fs_tmp.log, "Carpeta en el raiz");
@@ -413,6 +424,7 @@ int osada_rmdir (const char *path)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			printf("No existe la ruta indicada");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -429,6 +441,7 @@ int osada_rmdir (const char *path)
 	}
 	if ( i == MAX_FILES){
 		printf("No existe la carpeta a eliminar");
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
 	pos = i;
@@ -440,19 +453,18 @@ int osada_rmdir (const char *path)
 	while (i<MAX_FILES){
 		if (fs_tmp.file_table[i].parent_directory == pos && fs_tmp.file_table[i].state != DELETED){
 			printf("La carpeta no esta vacia %d",pos);
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOTEMPTY;
 		}
 		i++;
 	}
-	//sem_wait(&fs_tmp.mux_osada);
 	/* Modifico datos en la Tabla de Archivos */
 	fs_tmp.file_table[pos].state = DELETED;
-	time((time_t *)&fs_tmp.file_table[pos].lastmod);
 
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	//sem_post(&fs_tmp.mux_osada);
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -483,7 +495,7 @@ int osada_rename (const char *from, const char *to)
 	}
 /*
  * Comienza proceso de validacion
- */
+ */sem_wait(&fs_tmp.mux_osada);
 	/* Valido que exista el path */
 	if(!strcmp((char *)path2, "")){
 		parent = 0xFFFF;
@@ -491,6 +503,7 @@ int osada_rename (const char *from, const char *to)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			//log_error(fs_tmp.log, "No existe la ruta indicada");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -506,6 +519,7 @@ int osada_rename (const char *from, const char *to)
 	}
 	if ( i == MAX_FILES){
 		//log_error(fs_tmp.log, "No existe el archivo %d",i);
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
 	pos = i;
@@ -513,14 +527,14 @@ int osada_rename (const char *from, const char *to)
  * Fin proceso de validacion
  */
 
-	//sem_wait(&fs_tmp.mux_osada);
+
 	strcpy((char *)fs_tmp.file_table[i].fname, (char *)nombre_new);
-	time((time_t *)&fs_tmp.file_table[pos].lastmod);
+	time((time_t *)&(fs_tmp.file_table[pos].lastmod));
 
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-	//sem_post(&fs_tmp.mux_osada);
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -538,6 +552,7 @@ static int osada_open(const char *path)
 /*
  * comienza proceso de validacion
  */
+	sem_wait(&fs_tmp.mux_osada);
 	//  Valido Path
 	if(!strcmp((char *)path2, "")){
 		parent = 0xFFFF;
@@ -545,6 +560,7 @@ static int osada_open(const char *path)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			//log_error(fs_tmp.log, "No existe la ruta indicada");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -564,10 +580,12 @@ static int osada_open(const char *path)
 		}
 		if ( i == MAX_FILES){
 			//log_error(fs_tmp.log, "    No existe el archivo");
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 		pos = i;
 	}
+	sem_post(&fs_tmp.mux_osada);
 /*
  * fin proceso de validacion
  */
@@ -595,6 +613,7 @@ int osada_create (char *path)
 /*
  * comienza proceso de validacion
  */
+	sem_wait(&fs_tmp.mux_osada);
 	 //  Busco ubicacion del padre
 	if(!strcmp((char *)path2, "")){
 		parent = 0xFFFF;
@@ -602,6 +621,7 @@ int osada_create (char *path)
 		parent = is_parent(fs_tmp.file_table,path2);
 		if (parent == MAX_FILES){
 			log_error(fs_tmp.log, "  %s", strerror(ENOENT));
+			sem_post(&fs_tmp.mux_osada);
 			return -ENOENT;
 		}
 	}
@@ -619,7 +639,7 @@ int osada_create (char *path)
 	}
 	if (i == MAX_FILES){
 		log_error(fs_tmp.log, "  %s", strerror(ENOSPC));
-		//sem_post(&fs_tmp.mux_osada);
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOSPC;
 	}
 	// Valido que no se repita el nombre
@@ -629,7 +649,7 @@ int osada_create (char *path)
 				(fs_tmp.file_table[i].parent_directory == parent) &&
 					(fs_tmp.file_table[i].state == REGULAR)){
 			log_error(fs_tmp.log, "  %s", strerror(EEXIST));
-			//sem_post(&fs_tmp.mux_osada);
+			sem_post(&fs_tmp.mux_osada);
 			return -EEXIST;
 		}
 		i++;
@@ -638,7 +658,7 @@ int osada_create (char *path)
 	int32_t first_block = free_bit_bitmap(fs_tmp.bitmap);
 	if (first_block == 0xFFFFFFFF){
 		log_error(fs_tmp.log, "  %s", strerror(ENOSPC));
-		//sem_post(&fs_tmp.mux_osada);
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOSPC;
 	}
 	// Inserto el nuevo archivo en la Tabla de Archivos
@@ -646,7 +666,7 @@ int osada_create (char *path)
 	strcpy((char *)fs_tmp.file_table[libre].fname, (char *)nombre_arch);
 	fs_tmp.file_table[libre].parent_directory = parent;
 	fs_tmp.file_table[libre].file_size = 0;
-	time((time_t *)&fs_tmp.file_table[libre].lastmod);
+	time((time_t *)&(fs_tmp.file_table[libre].lastmod));
 	set_bitmap(fs_tmp.bitmap, first_block + data_offset);
 	fs_tmp.file_table[libre].first_block = first_block;
 	fs_tmp.fat_osada[first_block] = 0xFFFFFFFF;
@@ -662,7 +682,7 @@ int osada_create (char *path)
 	dirBlock = pokedex + fs_tmp.header.allocations_table_offset * OSADA_BLOCK_SIZE;
 	memcpy(dirBlock, fs_tmp.fat_osada, (fs_tmp.header.data_blocks * 4));
 	msync(dirBlock, (fs_tmp.header.data_blocks * 4), MS_ASYNC);
-	//sem_post(&fs_tmp.mux_osada);
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -673,36 +693,39 @@ int osada_statfs(osada_socket sock)
 	mensaje.type = OP_STATFS;
 	mensaje.len = 13;
 	mensaje.size = fs_tmp.header.fs_blocks;
-	//sem_wait(&fs_tmp.mux_osada);
+	sem_wait(&fs_tmp.mux_osada);
 	mensaje.offset = free_blocks(fs_tmp.bitmap);
-	//sem_post(&fs_tmp.mux_osada);
+	mensaje.cod_return = 0;
+	sem_post(&fs_tmp.mux_osada);
 	//printf("  STATFS: FS:%d - Free:%d\n", mensaje.size, mensaje.offset);
 	send_socket(&mensaje, sock);
 	check_state();
 	return 0;
 }
 
-//int osada_write (osada_packet mensaje)
 int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 {
 	log_info(fs_tmp.log, "OSADA write: %s - Size:%d - Off:%d", path, size, offset);
 
+	sem_wait(&fs_tmp.mux_osada);
 	uint16_t pos = is_parent(fs_tmp.file_table,(uint8_t *) path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
 		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
+	sem_post(&fs_tmp.mux_osada);
 	if(fs_tmp.file_table[pos].file_size < (offset + size)){
 		//log_trace(fs_tmp.log, "    size: %d trunc a: %d", fs_tmp.file_table[pos].file_size, (offset + size));
 		int ret = osada_ftruncate (path, ((offset) + (size)));
 		if (ret != 0){
-			printf("QUILOMBO\n");
-			printf("QUILOMBO\n");
-			printf("QUILOMBO\n");
-			printf("QUILOMBO\n");
+			log_error(fs_tmp.log, "  %s",strerror(-ret));
+			return ret;
 		}
 		//log_trace(fs_tmp.log, "    size: %d", fs_tmp.file_table[pos].file_size);
 	}
+
+	pthread_rwlock_wrlock(&fs_tmp.mux_files[pos]);
 
 	uint32_t block_start = fs_tmp.file_table[pos].first_block;
 	div_t block_offset = div(offset, OSADA_BLOCK_SIZE);
@@ -732,8 +755,10 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 			printf(" ------------- \n");
 			//Inserto nuevo bloque de datos
 			new_block = free_bit_bitmap(fs_tmp.bitmap);
-			if (new_block == 0xFFFFFFFF)
+			if (new_block == 0xFFFFFFFF){
+				pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
 				return -ENOSPC;
+			}
 			set_bitmap(fs_tmp.bitmap, new_block + data_offset);
 			fs_tmp.fat_osada[block_start] = new_block;
 			fs_tmp.fat_osada[new_block] = 0xFFFFFFFF;
@@ -767,6 +792,7 @@ int osada_write (char *path, uint32_t size, uint32_t offset, char *buf)
 		otro = fs_tmp.fat_osada[otro];
 		i++;
 	}
+	pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
 	return copied;
 }
 
@@ -780,15 +806,19 @@ int osada_ftruncate (const char * path, off_t offset)
 	nombre_arch[0] = '\0';
 	nombre_arch++;
 
+	sem_wait(&fs_tmp.mux_osada);
 	uint16_t pos = is_parent(fs_tmp.file_table, path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
 		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
+	sem_post(&fs_tmp.mux_osada);
 
 	if(offset == fs_tmp.file_table[pos].file_size)
 		return 0;
 
+	pthread_rwlock_wrlock(&fs_tmp.mux_files[pos]);
 	uint32_t block_start, aux_block, size_file, off_size;
 
 	if (fs_tmp.file_table[pos].file_size == 0)
@@ -813,7 +843,8 @@ int osada_ftruncate (const char * path, off_t offset)
 		//log_trace(fs_tmp.log, "       Need:%d Free:%d",block_abm, blocks_free);
 		if (block_abm > blocks_free){
 			//log_error(fs_tmp.log, "No hay espacio suficiente. Need:%d Free:%d Blocks",block_abm, blocks_free);
-			return -ENOSPC; //EFBIG - ENOSPC
+			pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
+			return -EFBIG; //EFBIG - ENOSPC
 		}
 		while(block_abm){
 			block_start = fs_tmp.file_table[pos].first_block;
@@ -829,7 +860,8 @@ int osada_ftruncate (const char * path, off_t offset)
 			if (aux_block == 0xFFFFFFFF){
 				//printf("    NO HAY ESPACIO!!!");
 				//log_trace(fs_tmp.log, "No hay bitmap disponible");
-				return -ENOSPC;
+				pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
+				return -EFBIG;
 			}
 			set_bitmap(fs_tmp.bitmap, aux_block + data_offset);
 			fs_tmp.fat_osada[block_start] = aux_block ;
@@ -879,13 +911,7 @@ int osada_ftruncate (const char * path, off_t offset)
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
 
-	int i=0;
-	uint32_t otro = fs_tmp.file_table[pos].first_block;
-	while (otro != 0xFFFFFFFF){
-		//printf("  Control: %d-%X\n", i, otro);
-		otro = fs_tmp.fat_osada[otro];
-		i++;
-	}
+	pthread_rwlock_unlock(&fs_tmp.mux_files[pos]);
 
 	return 0;
 }
@@ -906,10 +932,12 @@ int osada_unlink (const char *path)
 	nombre_dir[0] = '\0';
 	nombre_dir++;
 
+	sem_wait(&fs_tmp.mux_osada);
 	uint16_t pos = is_parent(fs_tmp.file_table, path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
 		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
 		printf("fallo is parent  %s",strerror(ENOENT));
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
 	/* Modifico datos en la Tabla de Archivos */
@@ -929,7 +957,7 @@ int osada_unlink (const char *path)
 	dirBlock = pokedex + (1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
-
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -944,10 +972,12 @@ int osada_utimens(const char* path, uint32_t lastmod)
 	nombre_dir[0] = '\0';
 	nombre_dir++;*/
 
+	sem_wait(&fs_tmp.mux_osada);
 	uint16_t pos = is_parent(fs_tmp.file_table, path);
 	if (pos == MAX_FILES || fs_tmp.file_table[pos].state == DELETED){
 		log_error(fs_tmp.log, "  %s",strerror(ENOENT));
 		printf("fallo is parent  %s",strerror(ENOENT));
+		sem_post(&fs_tmp.mux_osada);
 		return -ENOENT;
 	}
 
@@ -956,6 +986,7 @@ int osada_utimens(const char* path, uint32_t lastmod)
 	dirBlock = pokedex +(1 + fs_tmp.header.bitmap_blocks) * OSADA_BLOCK_SIZE ;
 	memcpy(dirBlock, fs_tmp.file_table, MAX_FILES * sizeof(osada_file));
 	msync(dirBlock, MAX_FILES * sizeof(osada_file), MS_ASYNC);
+	sem_post(&fs_tmp.mux_osada);
 	return 0;
 }
 
@@ -1056,6 +1087,9 @@ int main ( int argc , char * argv []) {
 			fs_tmp.header.data_blocks;
 
 	sem_init(&fs_tmp.mux_osada,0,1);
+	int i;
+	for (i=0;i<MAX_FILES;i++)
+		pthread_rwlock_init(&fs_tmp.mux_files[i],NULL);
 
 	data_offset  =	fs_tmp.header.allocations_table_offset + fat_size_block;
 
