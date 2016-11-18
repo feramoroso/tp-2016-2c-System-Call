@@ -45,6 +45,7 @@ typedef struct {
 	char   *dirMedallas;
 	char    vidas;
 	char    vidasDisponibles;
+	char    mapasJugados;
 	char    reintentos;
 	char    deadlocks;
 	char    muertes;
@@ -82,8 +83,8 @@ void salir(int status) {
 	free(rutaPokeDex);
 	/******** RESTAURACION CONSOLA ********/
 	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-	/**************************************/
 	system("setterm -cursor on");
+	/**************************************/
 	exit(status);
 }
 tMapa *getMapa(char *nomMapa) {
@@ -176,6 +177,8 @@ void signalRutina (int n) {
 			entrenador->vidasDisponibles++;
 			break;
 		case SIGTERM:
+			entrenador->sigterm = 1;
+			/*
 			if (entrenador->vidasDisponibles == 1)
 				entrenador->sigterm = 1;
 			else if (entrenador->vidasDisponibles > 1) {
@@ -183,7 +186,7 @@ void signalRutina (int n) {
 				printf(SUPER     "\n\t\t\t%s [%c] has perdido una vida!"                          , entrenador->nombre, entrenador->id);
 				printf(BOLDRED     "\n\t\t******************************************************\n\n" RESET);
 				entrenador->vidasDisponibles--;
-			}
+			}*/
 			break;
 		case SIGINT:
 			salir(EXIT_FAILURE);
@@ -192,9 +195,11 @@ void signalRutina (int n) {
 }
 void copiar(char *rutaOrigen, char *dirDestino) {
 	char   ch;
-	char  *archivoDestino;
+	char  *archivoOrigen,  *archivoDestino;
 	char **aux;
 	FILE  *source, *target;
+
+	archivoOrigen = string_from_format("%s%s", rutaPokeDex, rutaOrigen);
 
 	aux = string_split(rutaOrigen, "/");
 	int i = 0;
@@ -202,21 +207,24 @@ void copiar(char *rutaOrigen, char *dirDestino) {
 		i++;
 	archivoDestino = string_from_format("%s%s", dirDestino, aux[i-1]);
 
-	source = fopen(rutaOrigen,     "r");
+	source = fopen(archivoOrigen,     "r");
 	target = fopen(archivoDestino, "w");
 	while( ( ch = fgetc(source) ) != EOF )
 		fputc(ch, target);
 	fclose(source);
 	fclose(target);
+
 	free(archivoDestino);
+	free(archivoOrigen);
 	free(aux);
 }
 void borrar() {
-	char aux[256];
-	sprintf(aux, "rm -f \"%s\"*", entrenador->dirBill);
+	char *aux = string_from_format("rm -f \"%s\"*", entrenador->dirBill);
 	system(aux);
-	sprintf(aux, "rm -f %s*", entrenador->dirMedallas);
+	free(aux);
+	aux = string_from_format("rm -f %s*", entrenador->dirMedallas);
 	system(aux);
+	free(aux);
 	puts("\n\nArchivos de Objetivos cumplidos borrados.");
 }
 char getCaracter(char *msj) {
@@ -260,10 +268,8 @@ void conectarMapa(tMapa *mapa) {
 		salir(EXIT_FAILURE);
 	}
 	mensaje[nB] = '\0';
-//	printf("\n%d", nB);
 	printf(SUPER "\n%s\n" RESET, mensaje);
 	/* Manda el simbolo al Mapa */
-//	send(entrenador->socket, string_from_format("%c", entrenador->id), 1, 0);
 	mensaje[0] = entrenador->id;
 	send(entrenador->socket, mensaje, 1, 0);
 }
@@ -418,14 +424,13 @@ int jugarVida() {
 	printf(SUPER "\nVidas Disponibles: " RESET "%d", entrenador->vidasDisponibles);
 	fflush(stdout);
 	tMapa *mapa;
-	int mapasJugados = 0;
-	while( mapasJugados < list_size(entrenador->mapas) ) {
-		mapa = list_get(entrenador->mapas, mapasJugados);
+	while( entrenador->mapasJugados < list_size(entrenador->mapas) ) {
+		mapa = list_get(entrenador->mapas, entrenador->mapasJugados);
 		if( jugarMapa(mapa) ) {
 			muerte();
 			return 1;
 		}
-		mapasJugados++;
+		entrenador->mapasJugados++;
 	}
 	return 0;
 }
@@ -472,6 +477,7 @@ int main(int argc , char *argv[]) {
 		printf(BOLDCYAN "\n\t\t**********************************************" RESET);
 		printf(BOLDCYAN "\n\t\t**********************************************\n\n" RESET);
 		entrenador->vidasDisponibles = entrenador->vidas;
+		entrenador->mapasJugados     = 0;
 		entrenador->deadlocks        = 0;
 		entrenador->muertes          = 0;
 		entrenador->time             = time(0);
