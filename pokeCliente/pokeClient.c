@@ -177,8 +177,9 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 			var_stat.st_mode |= S_IFDIR;
 		else
 			var_stat.st_mode |= S_IFREG;
+		log_info(fs_tmp->log, "    %d - File(%d): %s", i, strlen(mensaje.fname), mensaje.fname);
+		mensaje.fname[17]='\0';
 		filler(buf, mensaje.fname, &var_stat, 0);
-		//log_trace(fs_tmp->log, "    %d - File: %s", i, mensaje.fname);
 		i++;
 		if (i < cantFiles){
 			cant = recv_socket(&mensaje,fs_tmp->sock);
@@ -187,9 +188,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 				log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
 				return -EFAULT;
 			}
-
 		}
-
 	}
 	sem_post(&fs_tmp->mux_socket);
 	return mensaje.cod_return;
@@ -306,11 +305,18 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 {
 	struct fuse_context* context = fuse_get_context();
 	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
-	log_info(fs_tmp->log, "OSADA open: %s", path);
+	log_info(fs_tmp->log, "OSADA open: %s - %X", path, fi->flags);
 
 	osada_packet mensaje;
 	mensaje.type = OP_OPEN;
 	mensaje.len = 290;
+
+	if((fi->flags & O_TRUNC) && ((fi->flags & O_RDWR) || (fi->flags & O_WRONLY)))
+		mensaje.offset = 2;
+	else if((fi->flags & O_RDWR) || (fi->flags & O_WRONLY))
+		mensaje.offset = 1;
+	else
+		mensaje.offset = 0;
 	strcpy((char *)mensaje.path, path);
 	int32_t cant;
 	sem_wait(&fs_tmp->mux_socket);
@@ -333,14 +339,14 @@ static int osada_open(const char *path, struct fuse_file_info *fi)
 	sem_post(&fs_tmp->mux_socket);
 	if (mensaje.cod_return < 0)
 		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
-	else{
+	/*else{
 		//fi->fh = mensaje.offset;
 		//log_trace(fs_tmp->log, "   Open OK: %d", mensaje.cod_return);
 		if((fi->flags & O_TRUNC) && ((fi->flags & O_RDWR) || (fi->flags & O_WRONLY))) {
 			//log_info(fs_tmp->log, "Open: truncando a 0");
 			return osada_ftruncate(path, 0, NULL);
 		}
-	}
+	}*/
 
 	return mensaje.cod_return;
 }
@@ -387,7 +393,6 @@ int osada_statfs(const char *path, struct statvfs *statvfs)
 	struct fuse_context* context = fuse_get_context();
 	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
 	log_info(fs_tmp->log,"OSADA statfs: %s", path);
-
 	osada_packet mensaje;
 	mensaje.type = OP_STATFS;
 	mensaje.len = 0;
@@ -619,6 +624,41 @@ int osada_utimens(const char* path, const struct timespec ts[2])
 	return mensaje.cod_return;
 }
 
+int osada_release(const char* path, struct fuse_file_info *fi)
+{
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+	log_info(fs_tmp->log, "OSADA RELEASE: %s", path);
+	osada_packet mensaje;
+	mensaje.type = OP_RELEASE;
+	mensaje.len = 290;
+	strcpy((char *)mensaje.path, path);
+	int32_t cant;
+	sem_wait(&fs_tmp->mux_socket);
+	cant = send_socket(&mensaje,fs_tmp->sock);
+	if(cant<0){
+		sem_post(&fs_tmp->mux_socket);
+		log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+		return -EFAULT;
+	}
+
+	/*
+	 * Espero respuesta del Servidor
+	 */
+	cant = recv_socket(&mensaje,fs_tmp->sock);
+	if(cant <= 0){
+		sem_post(&fs_tmp->mux_socket);
+		log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+		return -EFAULT;
+	}
+	sem_post(&fs_tmp->mux_socket);
+	if (mensaje.cod_return < 0)
+		log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+
+	return mensaje.cod_return;
+	return 0;
+}
+
 static void *osada_init(struct fuse_conn_info *conn)
 {
 	conn->want |= FUSE_CAP_ATOMIC_O_TRUNC;
@@ -695,6 +735,7 @@ static struct fuse_operations osada_oper = {
 	.write     = osada_write,
 	.unlink    = osada_unlink,
 	.ftruncate = osada_ftruncate,
+	.release   = osada_release,
 };
 
 int main ( int argc , char * argv []) {
