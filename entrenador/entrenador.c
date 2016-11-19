@@ -88,6 +88,14 @@ void salir(int status) {
 	/**************************************/
 	exit(status);
 }
+void borrar() {
+	char *aux = string_from_format("rm -f \"%s\"*", entrenador->dirBill);
+	system(aux);
+	free(aux);
+	aux = string_from_format("rm -f %s*", entrenador->dirMedallas);
+	system(aux);
+	free(aux);
+}
 tMapa *getMapa(char *nomMapa) {
 	tMapa *mapa = malloc(sizeof(tMapa));
 	mapa->nombre = strdup(nomMapa);
@@ -107,11 +115,21 @@ void getEntrenador(char *nomEntrenador) {
 	char **hojaDeViaje;
 	char **objetivos;
 	char  *objetivo;
+	char  *createDir;
 	tMapa *mapa;
 	entrenador = malloc(sizeof(tEntrenador));
 	entrenador->nombre      = nomEntrenador;
+	/* Crea el directorio "Dir de Bill" y guarda la ruta en la estructura */
 	entrenador->dirBill     = string_from_format("%s/Entrenadores/%s/Dir de Bill/", rutaPokeDex, entrenador->nombre);
+	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirBill);
+	system(createDir);
+	free(createDir);
+	/* Crea el directorio "medallas" y guarda la ruta en la estructura */
 	entrenador->dirMedallas = string_from_format("%s/Entrenadores/%s/medallas/"   , rutaPokeDex, entrenador->nombre);
+	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirMedallas);
+	system(createDir);
+	free(createDir);
+	borrar();
 	t_config *entrenadorConfig = config_create(string_from_format("%s/Entrenadores/%s/metadata", rutaPokeDex, entrenador->nombre));
 	if (entrenadorConfig == NULL) {
 		puts("\n\nNo se encontro el entrenador.");
@@ -218,15 +236,6 @@ void copiar(char *rutaOrigen, char *dirDestino) {
 	free(archivoDestino);
 	free(archivoOrigen);
 	free(aux);
-}
-void borrar() {
-	char *aux = string_from_format("rm -f \"%s\"*", entrenador->dirBill);
-	system(aux);
-	free(aux);
-	aux = string_from_format("rm -f %s*", entrenador->dirMedallas);
-	system(aux);
-	free(aux);
-	puts("\n\nArchivos de Objetivos cumplidos borrados.");
 }
 char getCaracter(char *msj) {
 	char c;
@@ -478,6 +487,7 @@ int main(int argc , char *argv[]) {
 		printf(BOLDCYAN "\n\t\t**********************************************" RESET);
 		printf(BOLDCYAN "\n\t\t**********************************************" RESET);
 		printf(BOLDCYAN "\n\t\t**********************************************\n\n" RESET);
+		borrar();
 		entrenador->vidasDisponibles = entrenador->vidas;
 		entrenador->mapasJugados     = 0;
 		entrenador->deadlocks        = 0;
@@ -493,6 +503,7 @@ int main(int argc , char *argv[]) {
 		if( entrenador->vidasDisponibles == 0) {
 			sinVidas();
 			borrar();
+			puts(RESET SUPER "\n\nArchivos de Objetivos cumplidos borrados." RESET);
 		}
 		printf(SUPER "\n\nNumero de Reintentos: " RESET "%d", entrenador->reintentos);
 		jugar = getCaracter("\n\nPresione R para reintentar, cualquier otra tecla para salir...");
