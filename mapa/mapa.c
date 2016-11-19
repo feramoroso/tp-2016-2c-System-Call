@@ -182,25 +182,29 @@ int pokeNestArraySize() {
 tPokeNestMetadata *getPokeNestMetadata(char * nomPokeNest) {
 	tPokeNestMetadata *pokeNestMetadata = malloc(sizeof(tPokeNestMetadata));
 	pokeNestMetadata->nombre = strdup( nomPokeNest );
-	t_config *pokeNestConfig = config_create(string_from_format("%s/Mapas/%s/PokeNests/%s/metadata", rutaPokeDex, mapaMetadata->nombre, nomPokeNest));
+	char *ruta = string_from_format("%s/Mapas/%s/PokeNests/%s/metadata", rutaPokeDex, mapaMetadata->nombre, nomPokeNest);
+	t_config *pokeNestConfig = config_create(ruta);
 	if (pokeNestConfig == NULL) return NULL; //Chequeo Errores
 	pokeNestMetadata->tipo = strdup( config_get_string_value(pokeNestConfig, "Tipo") );
 	pokeNestMetadata->posx = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[0]);
 	pokeNestMetadata->posy = atoi(string_split(config_get_string_value(pokeNestConfig, "Posicion"), ";")[1]);
 	pokeNestMetadata->id   = config_get_string_value(pokeNestConfig, "Identificador")[0];
 	config_destroy(pokeNestConfig);
+	free(ruta);
 	return pokeNestMetadata;
 }
 tPokemonMetadata *getPokemonMetadata(char *nomPokeNest, char id, int ord, char *rutaPokeNest) {
 	t_pkmn_factory* pokemon_factory = create_pkmn_factory();
 	tPokemonMetadata *pokemonMetadata = malloc(sizeof(tPokemonMetadata));
-	t_config *pokemonConfig = config_create(string_from_format("%s/%s%03d.dat", rutaPokeNest, nomPokeNest, ord));
+	char *ruta = string_from_format("%s/%s%03d.dat", rutaPokeNest, nomPokeNest, ord);
+	t_config *pokemonConfig = config_create(ruta);
 	if (pokemonConfig == NULL) return NULL; //Chequeo Errores
 	pokemonMetadata->data = create_pokemon(pokemon_factory, nomPokeNest, config_get_int_value(pokemonConfig, "Nivel"));
 	pokemonMetadata->id   = id;
 	pokemonMetadata->ord  = ord;
 	config_destroy(pokemonConfig);
 	destroy_pkmn_factory(pokemon_factory);
+	free(ruta);
 	return pokemonMetadata;
 }
 int getPokeNestArray() {
@@ -339,8 +343,10 @@ int enviarCoordenadasEntrenador(tEntrenador *entrenador, char pokeNest) {
 	aux = string_from_format("%3d%3d", pokeNestArray[pos]->posx, pokeNestArray[pos]->posy);
 	send(entrenador->socket, aux, 6, 0);
 	free(aux);
-	printf("Entrenador %c en busqueda de Pokemon %s.", entrenador->id, pokeNestArray[pos]->nombre);
-	fflush(stdout);
+	aux = string_from_format("Entrenador %c en busqueda de Pokemon %s [%c].", entrenador->id, pokeNestArray[pos]->nombre, pokeNestArray[pos]->id);
+	log_info(logger, aux);
+	write(0, aux, strlen(aux));
+	free(aux);
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	return EXIT_SUCCESS;
 }
@@ -349,10 +355,9 @@ void solicitarPokemon(tEntrenador *entrenador, char pokeNest) {
 	pos = getPokeNestFromID(pokeNest);
 	char *aux = string_from_format("Entrenador %c ha solicitado Pokemon %s [%c].", entrenador->id, pokeNestArray[pos]->nombre, pokeNestArray[pos]->id);
 	log_info(logger, aux);
-	printf(aux);
-	fflush(stdout);
-	nivel_gui_dibujar(items, mapaMetadata->nombre);
+	write(0, aux, strlen(aux));
 	free(aux);
+	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	agregarBlocked(entrenador);
 }
 void enviarMedalla(tEntrenador *entrenador) {
@@ -653,8 +658,8 @@ void *asignador() {
 				/* Envio ruta del Pokemon */
 				sprintf(mensaje,"/Mapas/%s/PokeNests/%s/%s%03d.dat", mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
 				send(entrenador->socket, mensaje, strlen(mensaje), 0);
-				log_info(logger, "Pokemon %s capturado por entrenador %c.", pokeNestArray[pos]->nombre, entrenador->id);
-				printf("Pokemon %s capturado por entrenador %c!", pokeNestArray[pos]->nombre, entrenador->id);
+				log_info(logger, "Pokemon %s [%c] capturado por entrenador %c.", pokeNestArray[pos]->nombre, pokeNestArray[pos]->id, entrenador->id);
+				printf("Pokemon %s [%c] capturado por entrenador %c.", pokeNestArray[pos]->nombre, pokeNestArray[pos]->id, entrenador->id);
 				fflush(stdout);
 				nivel_gui_dibujar(items, mapaMetadata->nombre);
 				entrenador->obj = 0;
@@ -935,6 +940,6 @@ int main(int argc , char *argv[]) {
 	pthread_mutex_destroy(&mutexReady);
 	sem_destroy(&semAsignador);
 	sem_destroy(&semPlanificador);
-	system("setterm -cursor on");
+//	system("setterm -cursor on");
 	return EXIT_SUCCESS;
 }

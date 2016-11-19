@@ -27,6 +27,7 @@
 #define BOLDGREEN    "\033[1m\033[32m"      /* Bold Green */
 #define BOLDYELLOW   "\033[1m\033[33m"      /* Bold Yellow */
 #define BOLDCYAN     "\033[1m\033[36m"      /* Bold Cyan */
+#define _RED         "\033[91m"             /* Bright Red */
 #define _MAGENTA     "\033[95m"             /* Bright Magenta */
 
 
@@ -318,6 +319,7 @@ void obtenerCoordenadas() {
 	entrenador->obj.y = atoi(aux);
 	free(aux);
 	printf("\nCoordenadas\n" SUPER "x: " RESET "%d  -  " SUPER "y: " RESET "%d\n", entrenador->obj.x, entrenador->obj.y);
+	puts(_MAGENTA "Buscando..." RESET);
 	fflush(stdout);
 }
 int irPosicionPokenest() {
@@ -358,7 +360,7 @@ int capturarPokemon() {
 	aux = string_from_format("G%c", entrenador->obj.id);
 	send(entrenador->socket, aux, 2, 0);
 	free(aux);
-	printf(_MAGENTA "Capturando %c...\n" RESET, entrenador->obj.id);
+	printf(_RED "Capturando %c...\n" RESET, entrenador->obj.id);
 	while (1) {
 		nB = recv(entrenador->socket, mensaje, TAM_MENSAJE, 0);
 		if ( entrenador->sigterm )
