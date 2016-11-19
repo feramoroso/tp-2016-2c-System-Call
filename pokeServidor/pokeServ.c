@@ -316,7 +316,7 @@ static int osada_readdir(osada_packet mens, osada_socket sock)
 		mensaje.file_state = fs_tmp.file_table[files[i]].state;
 		//printf("Envio:    %d-(%d)-%s\n",i, strlen(mensaje.fname), mensaje.fname);
 		send_socket(&mensaje, sock);
-		usleep(5000);
+		usleep(20000);
 	}
 	if (cant == 0){
 		mensaje.type = OP_READDIR;
