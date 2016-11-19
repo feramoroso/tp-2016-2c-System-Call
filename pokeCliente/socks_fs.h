@@ -5,6 +5,9 @@
 
 #define MAX_CONECTIONS 20
 
+#define MAX(a,b) (a)>(b)?(a):(b)
+#define MIN(a,b) (a)<(b)?(a):(b)
+
 enum {
     OK           = 0,
     OP_GETATTR   = 1,	// static int osada_getattr(const char *path, struct stat *stbuf)

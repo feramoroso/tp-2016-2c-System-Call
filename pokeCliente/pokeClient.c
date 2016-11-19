@@ -49,7 +49,7 @@ static int osada_read(const char *path, char *buf, size_t size, off_t offset,str
 		}
 		if (mensaje.cod_return < 0){
 			sem_post(&fs_tmp->mux_socket);
-			log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+			log_error(fs_tmp->log, "    %s", strerror(mensaje.cod_return));
 			return mensaje.cod_return;
 		}
 		memcpy(buf + readed, mensaje.path, mensaje.cod_return);
@@ -177,7 +177,7 @@ static int osada_readdir(const char *path, void *buf, fuse_fill_dir_t filler, of
 			var_stat.st_mode |= S_IFDIR;
 		else
 			var_stat.st_mode |= S_IFREG;
-		log_info(fs_tmp->log, "    %d - File(%d): %s", i, strlen(mensaje.fname), mensaje.fname);
+		//log_info(fs_tmp->log, "    %d - File(%d): %s", i, strlen(mensaje.fname), mensaje.fname);
 		mensaje.fname[17]='\0';
 		filler(buf, mensaje.fname, &var_stat, 0);
 		i++;
@@ -662,7 +662,10 @@ int osada_release(const char* path, struct fuse_file_info *fi)
 static void *osada_init(struct fuse_conn_info *conn)
 {
 	conn->want |= FUSE_CAP_ATOMIC_O_TRUNC;
-	fs_osada_t *fs_tmp = calloc(sizeof(fs_osada_t), 1);
+	struct fuse_context* context = fuse_get_context();
+	fs_osada_t *fs_tmp = (fs_osada_t *) context->private_data;
+
+	/*fs_osada_t *fs_tmp = calloc(sizeof(fs_osada_t), 1);
 	char arch[15] = "logFUSE.txt";
 	fs_tmp->log = log_create( arch, "PokCli" , false , LOG_LEVEL_INFO);
 	//sleep(2);
@@ -680,6 +683,9 @@ static void *osada_init(struct fuse_conn_info *conn)
 		log_error(fs_tmp->log, "La conexion al Servidor no esta lista: %s", strerror(errno));
 		exit(-EADDRNOTAVAIL);
 	}else {log_info(fs_tmp->log,"Connect Socket OK");}
+*/
+
+
 	osada_packet mensaje;
 
 	mensaje.type = 0;
@@ -721,29 +727,52 @@ void osada_destroy(void * foo) //foo es private_data que devuelve el init
 
 static struct fuse_operations osada_oper = {
 	.getattr   = osada_getattr,
-	.readdir   = osada_readdir,
-	.init      = osada_init,
 	.mkdir     = osada_mkdir,
+	.unlink    = osada_unlink,
 	.rmdir     = osada_rmdir,
 	.rename    = osada_rename,
-	.statfs    = osada_statfs,
+	.truncate  = osada_truncate,
 	.utimens   = osada_utimens,
 	.open      = osada_open,
 	.read      = osada_read,
-	.create    = osada_create,
-	.truncate  = osada_truncate,
 	.write     = osada_write,
-	.unlink    = osada_unlink,
-	.ftruncate = osada_ftruncate,
+	.statfs    = osada_statfs,
 	.release   = osada_release,
+	.readdir   = osada_readdir,
+	.create    = osada_create,
+	.ftruncate = osada_ftruncate,
+	.init      = osada_init,
 };
 
 int main ( int argc , char * argv []) {
 	printf("Pokedex Cliente!\n");
 
+	fs_osada_t *fs_tmp = calloc(sizeof(fs_osada_t), 1);
+	char arch[15] = "logFUSE.txt";
+	fs_tmp->log = log_create( arch, "PokCli" , false , LOG_LEVEL_INFO);
+	if ((fs_tmp->log) == NULL){
+		usleep(100);
+		return EXIT_FAILURE;
+	}
+	if((fs_tmp->sock = create_socket())<0) {
+		log_error(fs_tmp->log, "Error al crear el socket: %s", strerror(errno));
+		exit(-EADDRNOTAVAIL);
+	}else {log_info(fs_tmp->log,"Create Socket OK");}
+
+	if(connect_socket(fs_tmp->sock, (char *)argv[argc-3], atoi(argv[argc-2]))){
+		log_error(fs_tmp->log, "La conexion al Servidor no esta lista: %s", strerror(errno));
+		exit(-EADDRNOTAVAIL);
+	}else {log_info(fs_tmp->log,"Connect Socket OK");}
+
+	argv[argc-3] = argv[argc-1];
+	argv[argc-2] = NULL;
+	argv[argc-1] = NULL;
+	argc--;
+	argc--;
+
 	printf("\nInicia FUSE\n");
 	int ret=0;
-	ret = fuse_main(argc, argv, &osada_oper, NULL);
+	ret = fuse_main(argc, argv, &osada_oper, fs_tmp);
 	printf("\nFinalizo: %d", ret);
 	return ret;
 }

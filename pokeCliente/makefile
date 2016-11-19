@@ -1,46 +1,24 @@
-#gcc -DFUSE_USE_VERSION=27 -D_FILE_OFFSET_BITS=64 
-#gcc  -o "pokeCliente" $(OBJS) $(USER_OBJS) $(LIBS) -c pokeClient.c
+FLAGS      = -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=27
+LIBFLAGS   = -lpthread -lcommons -lfuse
 
-# Add inputs and outputs from these tool invocations to the build variables 
-C_SRCS += \
-./Debug/pokeClient.c \
-./Debug/socks_fs.c 
+PFS_BIN =	./pokeCliente
+PFS_OBJS =	./socks_fs.o \
+				./pokeClient.o \
 
-OBJS += \
-./Debug/pokeClient.o \
-./Debug/socks_fs.o 
-
-C_DEPS += \
-./pokeClient.d \
-./socks_fs.d 
+PFS_INCLUDES =	./socks_fs.h \
+					./pokeClient.h \
 
 
-# Each subdirectory must supply rules for building sources it contributes
-%.o: ../%.c
-	@echo 'Building file: $<'
-	@echo 'Invoking: GCC C Compiler'
-	gcc -DFUSE_USE_VERSION=27 -D_FILE_OFFSET_BITS=64 -O0 -g3 -Wall -g -c -fmessage-length=0 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -o "$@" "$<"
-	@echo 'Finished building: $<'
-	@echo ' '
+all: pokeCli
 
 
-# All Target
-all: pokeCliente
+pokeCli: $(PFS_BIN)
 
-# Tool invocations
-pokeCliente: $(OBJS) $(USER_OBJS)
-	@echo 'Building target: $@'
-	@echo 'Invoking: GCC C Linker'
-	gcc  -o "pokeCliente" $(OBJS) -lcommons -lpthread -lfuse
-	@echo 'Finished building target: $@'
-	@echo ' '
+$(PFS_BIN): $(PFS_OBJS) $(PFS_INCLUDES)
+	@gcc $(PFS_OBJS) -o $@ $(LIBFLAGS)
 
-# Other Targets
-clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) pokeCliente
-	-@echo ' '
-
-.PHONY: all clean dependents
+%.o: %.c $(PFS_INCLUDES)
+	@gcc $(FLAGS) $< -o $@ -c
 
 
-
+.PHONY: pokeCli all
