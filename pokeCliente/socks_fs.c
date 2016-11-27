@@ -96,11 +96,11 @@ int32_t recv_socket(osada_packet *packet, osada_socket sock)
 			//* Si read devuelve 0, es que se ha cerrado el socket. Devolvemos
 			//* los caracteres leidos hasta ese momento
 			if (aux == 0)
-			{
+			{printf("\n\n---- Cerro Socks_fs - RECV\n\n");fflush(stdout);
 				return leido;
 			}
 			if (aux == -1)
-			{
+			{  printf("\n\n---- Error Socks_fs - RECV: %s\n\n",strerror(errno));fflush(stdout);
 				/*
 				* En caso de error, la variable errno nos indica el tipo
 				* de error.
@@ -126,8 +126,7 @@ int32_t recv_socket(osada_packet *packet, osada_socket sock)
 			}
 		}
 	}
-	//lo que estaba aca es irrelevante si simplemente pasamos el paquete como buffer
-	//printf("Control de mensaje recibido del %d: %d - %d - %d - %s\n",sock,packet->type,packet->len,packet->payload.sector,packet->payload.contenido);
+	//printf("\n---- RECV type(%d): %d de %d\n", packet->type, leido, packet->len);fflush(stdout);
 	return leido;
 }
 
@@ -162,7 +161,7 @@ int32_t send_socket(osada_packet *packet, osada_socket sock)
 			Escrito = Escrito + Aux;
 		}
 		else
-		{
+		{  printf("\n\n---- Error Socks_fs - SEND: %s\n\n",strerror(errno));fflush(stdout);
 			//* Si se ha cerrado el socket, devolvemos el numero de caracteres
 			//* leidos.
 			//* Si ha habido error, devolvemos -1
@@ -172,7 +171,6 @@ int32_t send_socket(osada_packet *packet, osada_socket sock)
 				return -1;
 		}
     }
-    //printf("Control de mensaje enviado del %d: %d - %d - %d - %s\n",sock,packet->type,packet->len,packet->payload.sector,packet->payload.contenido);
     return Escrito;
 }
 
