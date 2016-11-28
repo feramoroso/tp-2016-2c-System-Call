@@ -1,7 +1,0 @@
-nombre=Maria
-simbolo=$
-hojaDeViaje=[PuebloPaleta,CiudadPlateada]
-obj[PuebloPaleta]=[B,K,Z]
-obj[CiudadPlateada]=[P,W,B,W]
-vidas=1
-reintentos=0

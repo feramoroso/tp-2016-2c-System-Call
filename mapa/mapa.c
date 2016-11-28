@@ -345,7 +345,7 @@ int enviarCoordenadasEntrenador(tEntrenador *entrenador, char pokeNest) {
 	free(aux);
 	aux = string_from_format("Entrenador %c en busqueda de Pokemon %s [%c].", entrenador->id, pokeNestArray[pos]->nombre, pokeNestArray[pos]->id);
 	log_info(logger, aux);
-	write(0, aux, strlen(aux));
+//	write(0, aux, strlen(aux));
 	free(aux);
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	return EXIT_SUCCESS;
@@ -355,7 +355,7 @@ void solicitarPokemon(tEntrenador *entrenador, char pokeNest) {
 	pos = getPokeNestFromID(pokeNest);
 	char *aux = string_from_format("Entrenador %c ha solicitado Pokemon %s [%c].", entrenador->id, pokeNestArray[pos]->nombre, pokeNestArray[pos]->id);
 	log_info(logger, aux);
-	write(0, aux, strlen(aux));
+//	write(0, aux, strlen(aux));
 	free(aux);
 	nivel_gui_dibujar(items, mapaMetadata->nombre);
 	agregarBlocked(entrenador);
@@ -495,68 +495,6 @@ int deadlockDetect(int eMax, int pMax) {
 	}
 	return 0;
 }
-int deadlockDetect1(int eMax, int pMax) {
-	tEntrenador *entrenador;
-	int i, j, nuevo, flag = 0,
-	work[pMax],                 /* Copio el vector de Recursos Disponibles */
-	finish[eMax];               /* Vector con todos los procesos, 1 finaliza, 0 no finaliza */
-
-	/* Inicializo vectores work y finish */
-	for (i = 0; i < pMax; i++)
-		work[i] = vecDisponibles[i];
-	/* Asumo que terminan salvo que tengan recursos asignados */
-	for (i = 0; i < eMax; i++) {
-		finish[i] = 1;
-		for (j = 0; j < pMax; j++)
-			if ( matAsignados[i][j] ) {
-				finish[i] = 0;
-				break;
-			}
-	}
-
-	/* Búsqueda de ciclos que impliquen interbloqueo */
-	nuevo = 0;
-	do {
-		for (i = 0; i < eMax; i++) {
-			if ( !finish[i] ) {
-				/* Guardo en j el recurso que esta pidiendo */
-				for (j = 0; j < pMax; j++)
-					if ( matPedidos[i][j] )
-						break;
-				/*******************************************/
-				if ( !work[j] )
-					continue;
-				finish[i] = 1;
-				for (j = 0; j < pMax; j++)
-					work[j] += matAsignados[i][j];
-				nuevo = 1;
-				break;
-			}
-		}
-	} while ( nuevo );
-
-	/* Si algun proceso esta en 0, se encuentra en Deadlock */
-	for (i = 0; i < eMax; i++) {
-		if ( !finish[i] ) {
-			/* Al encontrar el primero ya se que hay un Deadlock */
-			flag = 1;
-			/* Si esta activado el modo batalla agrego a los entrenadores en la lista Deadlock */
-			if ( mapaMetadata->batalla ) {
-				entrenador = list_get(eBlocked, i);
-				list_add(eDeadlock, entrenador);
-				log_info(logger, "Entrenador %c agregado a la cola de Deadlock.", entrenador->id);
-				/* Por protocolo le aviso al entrenador que esta en Deadlock enviandole una "D" */
-				send(entrenador->socket, "D", TAM_MENSAJE, 0);
-			}
-		}
-	}
-	if ( flag ) {
-		log_warning(logger, "Interbloqueo Detectado!");
-		imprimirEstructuras(eMax, pMax);
-		return 1;
-	}
-	return 0;
-}
 void batallaPokemon() {
 	tEntrenador *eA, *eB, *eWinner, *eLoser;
 	tPokemonMetadata *pkA, *pkB, *pkLoser;
@@ -631,7 +569,7 @@ void *deadlock() {
 		if ( (eMax = list_size(eBlocked)) > 1 ) {
 			inicializarEstructuras(eMax, pMax);
 			llenarEstructuras(eMax, pMax);
-			if ( deadlockDetect1(eMax, pMax) && mapaMetadata->batalla )
+			if ( deadlockDetect(eMax, pMax) && mapaMetadata->batalla )
 				batallaPokemon();
 		}
 		pthread_mutex_unlock(&mutexBlocked);
@@ -659,7 +597,7 @@ void *asignador() {
 				sprintf(mensaje,"/Mapas/%s/PokeNests/%s/%s%03d.dat", mapaMetadata->nombre, pokeNestArray[pos]->nombre, pokeNestArray[pos]->nombre, pokemon->ord);
 				send(entrenador->socket, mensaje, strlen(mensaje), 0);
 				log_info(logger, "Pokemon %s [%c] capturado por entrenador %c.", pokeNestArray[pos]->nombre, pokeNestArray[pos]->id, entrenador->id);
-				printf("Pokemon %s [%c] capturado por entrenador %c.", pokeNestArray[pos]->nombre, pokeNestArray[pos]->id, entrenador->id);
+//				printf("Pokemon %s [%c] capturado por entrenador %c.", pokeNestArray[pos]->nombre, pokeNestArray[pos]->id, entrenador->id);
 				fflush(stdout);
 				nivel_gui_dibujar(items, mapaMetadata->nombre);
 				entrenador->obj = 0;
@@ -760,10 +698,10 @@ void planSRDF() {
 void *planificador() {
 	while (1) {
 		sem_wait(&semPlanificador);
-		    if      ( !strncmp(mapaMetadata->algoritmo, "RR"  , 2) )
-				planRR();
-			else if ( !strncmp(mapaMetadata->algoritmo, "SRDF", 4) )
-				planSRDF();
+		if      ( !strncmp(mapaMetadata->algoritmo, "RR"  , 2) )
+			planRR();
+		else if ( !strncmp(mapaMetadata->algoritmo, "SRDF", 4) )
+			planSRDF();
 	}
 }
 /************************************************        HILO HANDSHAKE        *********************************************************************/
@@ -797,7 +735,7 @@ void *handshake(void *socket) {
 /************************************************             MAIN             *********************************************************************/
 /***************************************************************************************************************************************************/
 int main(int argc , char *argv[]) {
-	system("clear");
+//	system("clear");
 //	system("setterm -cursor off");
 	if (argc != 3) {
 		puts("Cantidad de parametros incorrecto!");
@@ -866,9 +804,9 @@ int main(int argc , char *argv[]) {
 
 	/* Mostrar información de Conexión */
 	gethostname(hostname, T_NOM_HOST);
-	printf("Host Name : %s\n", hostname);
-	printf("Dirección : %s\n", inet_ntoa(server.sin_addr));
-	printf("Puerto    : %d\n\n", mapaMetadata->puerto);
+	printf("Host Name: %s\n", hostname);
+	printf("Dirección: %s\n", inet_ntoa(server.sin_addr));
+	printf("Puerto:    %d\n\n", mapaMetadata->puerto);
 
 	/* Enlace */
     if( bind(socketEscucha, (struct sockaddr *)&server , sizeof(server)) == -1) {

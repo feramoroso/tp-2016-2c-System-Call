@@ -98,10 +98,12 @@ void borrar() {
 }
 tMapa *getMapa(char *nomMapa) {
 	tMapa *mapa = malloc(sizeof(tMapa));
-	mapa->nombre = strdup(nomMapa);
-	t_config *mapaConfig = config_create(string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapa->nombre));
+	mapa->nombre = nomMapa;
+	char *ruta = string_from_format("%s/Mapas/%s/metadata", rutaPokeDex, mapa->nombre);
+	t_config *mapaConfig = config_create(ruta);
+	free(ruta);
 	if (mapaConfig == NULL) {
-		puts("No se encontro el mapa.");
+		puts( BOLDRED "\n\nERROR: " RESET SUPER "No se encontro el mapa." RESET);
 		salir(EXIT_FAILURE);
 	}
 	mapa->ip        = strdup( config_get_string_value(mapaConfig, "IP") );
@@ -115,34 +117,41 @@ void getEntrenador(char *nomEntrenador) {
 	char **hojaDeViaje;
 	char **objetivos;
 	char  *objetivo;
-	char  *createDir;
+//	char  *createDir;
 	tMapa *mapa;
 	entrenador = malloc(sizeof(tEntrenador));
 	entrenador->nombre      = nomEntrenador;
 	/* Crea el directorio "Dir de Bill" y guarda la ruta en la estructura */
 	entrenador->dirBill     = string_from_format("%s/Entrenadores/%s/Dir de Bill/", rutaPokeDex, entrenador->nombre);
-	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirBill);
-	system(createDir);
-	free(createDir);
+//	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirBill);
+//	system(createDir);
+//	free(createDir);
 	/* Crea el directorio "medallas" y guarda la ruta en la estructura */
 	entrenador->dirMedallas = string_from_format("%s/Entrenadores/%s/medallas/"   , rutaPokeDex, entrenador->nombre);
-	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirMedallas);
-	system(createDir);
-	free(createDir);
+//	createDir = string_from_format("mkdir -p \"%s\"", entrenador->dirMedallas);
+//	system(createDir);
+//	free(createDir);
+	/* Borra el contenido de los Directorios */
 	borrar();
-	t_config *entrenadorConfig = config_create(string_from_format("%s/Entrenadores/%s/metadata", rutaPokeDex, entrenador->nombre));
+
+	char *ruta = string_from_format("%s/Entrenadores/%s/metadata", rutaPokeDex, entrenador->nombre);
+	t_config *entrenadorConfig = config_create(ruta);
+	free(ruta);
 	if (entrenadorConfig == NULL) {
-		puts("\n\nNo se encontro el entrenador.");
+		puts( BOLDRED "\n\nERROR: " RESET SUPER "No se encontro el entrenador." RESET);
 		salir(EXIT_FAILURE);
 	}
 	entrenador->id = config_get_string_value(entrenadorConfig, "simbolo")[0];
 	printf(SUPER "\nNombre: " RESET "%s " "[" BOLDGREEN "%c" RESET "]", entrenador->nombre, entrenador->id);
+	entrenador->vidas      = config_get_int_value(entrenadorConfig, "vidas");
+	printf(SUPER "\n\nVidas:  " RESET "%d", entrenador->vidas);
 	hojaDeViaje = config_get_array_value(entrenadorConfig, "hojaDeViaje");
 	printf(BOLDYELLOW "\n\nHOJA DE VIAJE" RESET);
 	entrenador->mapas = list_create();
 	i = 0;
 	while( hojaDeViaje[i] ) {
 		mapa = getMapa(hojaDeViaje[i]);
+
 		printf(SUPER "\n\nMapa [%d]:  " RESET "%s", i+1, mapa->nombre);
 		printf(SUPER    "\nIP:        " RESET "%s", mapa->ip);
 		printf(SUPER    "\nPuerto:    " RESET "%d", mapa->puerto);
@@ -159,10 +168,8 @@ void getEntrenador(char *nomEntrenador) {
 		list_add(entrenador->mapas, mapa);
 		i++;
 	}
-	entrenador->vidas      = config_get_int_value(entrenadorConfig, "vidas");
 	entrenador->reintentos = 0; //config_get_int_value(entrenadorConfig, "reintentos");
 	config_destroy(entrenadorConfig);
-	free(hojaDeViaje);
 }
 struct tm tiempo(int seg) {
 	struct tm t;
@@ -177,12 +184,12 @@ void desconectarMapa() {
 void sinVidas() {
 	printf(BOLDRED "\n\n\n\t\t*******************" RESET SUPER "  GAME OVER  " BOLDRED "*********************" RESET);
 	printf(SUPER     "\n\t\t\t%s [%c] has quedado sin vidas!"                         , entrenador->nombre, entrenador->id);
-	printf(BOLDRED     "\n\t\t*****************************************************" RESET);
+	printf(BOLDRED     "\n\t\t*****************************************************\n\n\n\n" RESET);
 }
 void muerte() {
 	printf(BOLDRED "\n\n\n\t\t**********************" RESET SUPER "  MUERTE  " BOLDRED "**********************" RESET);
 	printf(SUPER     "\n\t\t\t%s [%c] has perdido la vida!"                          , entrenador->nombre, entrenador->id);
-	printf(BOLDRED     "\n\t\t******************************************************\n\n" RESET);
+	printf(BOLDRED     "\n\t\t******************************************************\n\n\n\n" RESET);
 	entrenador->muertes++;
 	entrenador->vidasDisponibles--;
 	desconectarMapa();
@@ -190,9 +197,9 @@ void muerte() {
 void signalRutina (int n) {
 	switch (n) {
 		case SIGUSR1:
-			printf(BOLDRED "\n\n\n\t\t**********************" RESET SUPER "  MUERTE  " BOLDRED "**********************" RESET);
+			printf(BOLDGREEN "\n\n\n\t\t***********************" RESET SUPER "  VIDA  " BOLDGREEN "***********************" RESET);
 			printf(SUPER     "\n\t\t\t%s [%c] has recibido una vida!"                          , entrenador->nombre, entrenador->id);
-			printf(BOLDRED     "\n\t\t******************************************************\n\n" RESET);
+			printf(BOLDGREEN     "\n\t\t******************************************************\n\n\n\n" RESET);
 			entrenador->vidasDisponibles++;
 			break;
 		case SIGTERM:
@@ -315,8 +322,7 @@ void obtenerCoordenadas() {
 //	printf("\n%d", nB);
 //	printf("\n%s\n", coordenadas);
 	if( coordenadas[0] == 'N') {
-		puts("No existe el Pokemon solicitado en el Mapa.");
-		fflush(stdout);
+		puts( BOLDRED "\n\nERROR: " RESET SUPER "No existe el Pokemon solicitado en el Mapa." RESET);
 		salir(EXIT_FAILURE);
 	}
 	/* Transformo los tres primeros caracteres XXX en int */
@@ -327,8 +333,8 @@ void obtenerCoordenadas() {
 	aux = string_substring(coordenadas, 3, 3);
 	entrenador->obj.y = atoi(aux);
 	free(aux);
-	printf("\nCoordenadas\n" SUPER "x: " RESET "%d  -  " SUPER "y: " RESET "%d\n", entrenador->obj.x, entrenador->obj.y);
-	puts(_MAGENTA "Buscando..." RESET);
+	printf("\nCoordenadas\n" SUPER "x: " RESET "%d  -  " SUPER "y: " RESET "%d", entrenador->obj.x, entrenador->obj.y);
+	puts(_MAGENTA "\nBuscando..." RESET);
 	fflush(stdout);
 }
 int irPosicionPokenest() {

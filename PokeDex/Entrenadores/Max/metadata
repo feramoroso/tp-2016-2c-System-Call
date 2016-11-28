@@ -1,7 +1,0 @@
-nombre=Max
-simbolo=&
-hojaDeViaje=[PuebloPaleta,CiudadPlateada]
-obj[PuebloPaleta]=[P,B]
-obj[CiudadPlateada]=[W,P,W,B]
-vidas=3
-reintentos=0

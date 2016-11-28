@@ -1,7 +1,0 @@
-nombre=Red
-simbolo=@
-hojaDeViaje=[PuebloPaleta,CiudadPlateada]
-obj[PuebloPaleta]=[K,B,Z]
-obj[CiudadPlateada]=[W,K,B,P]
-vidas=5
-reintentos=0
