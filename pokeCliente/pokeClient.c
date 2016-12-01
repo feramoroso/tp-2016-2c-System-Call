@@ -489,6 +489,7 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 		cant = send_socket(&mensaje,fs_tmp->sock);
 		if(cant<0){
 			log_error(fs_tmp->log, "    ERROR send: %s", strerror(errno));
+			sem_post(&fs_tmp->mux_socket);
 			return -EFAULT;
 		}
 		/*
@@ -497,10 +498,12 @@ int osada_write (const char *path, const char *buf, size_t size, off_t offset, s
 		cant = recv_socket(&mensaje,fs_tmp->sock);
 		if(cant <= 0){
 			log_error(fs_tmp->log, "    ERROR recv: %s", strerror(errno));
+			sem_post(&fs_tmp->mux_socket);
 			return -EFAULT;
 		}
 		if (mensaje.cod_return < 0){
 			log_error(fs_tmp->log, "    %s", strerror(-mensaje.cod_return));
+			sem_post(&fs_tmp->mux_socket);
 			return mensaje.cod_return;
 		}
 		writed = writed + mensaje.cod_return;
