@@ -86,9 +86,9 @@ typedef struct {
 /***************************************************************************************************************************************************/
 /************************************************      VARIABLES GLOBALES      *********************************************************************/
 /***************************************************************************************************************************************************/
-tMapaMetadata     *mapaMetadata;        // Estructura con la Metadaata del Mapa
+tMapaMetadata     *mapaMetadata;        // Estructura con la Metadata del Mapa
 tPokeNestMetadata *pokeNestArray[100];  // Arreglo con las distintas PokeNest
-tPokemonMetadata  *pokemonMetadata;     // Estructura con la Metadaata de los Pokemon
+tPokemonMetadata  *pokemonMetadata;     // Estructura con la Metadata de los Pokemon
 
 t_list  *eReady;                        // Lista de Entrenadores Listos
 t_list  *eBlocked;                      // Lista de Entrenadores Bloqueados
